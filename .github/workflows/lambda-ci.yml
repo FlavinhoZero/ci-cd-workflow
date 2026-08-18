@@ -90,6 +90,7 @@ jobs:
     name: Terraform Plan
     needs: [test, package]
     runs-on: ubuntu-latest
+    environment: test
     permissions:
       id-token: write
       contents: read
@@ -137,6 +138,7 @@ jobs:
     needs: plan
     if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
+    environment: test
     permissions:
       id-token: write
       contents: read
@@ -173,6 +175,7 @@ jobs:
     needs: plan
     if: (github.ref == 'refs/heads/main' && github.event_name != 'workflow_dispatch') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    environment: production
     permissions:
       id-token: write
       contents: read
