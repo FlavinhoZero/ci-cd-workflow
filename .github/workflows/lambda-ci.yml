@@ -32,11 +32,13 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          # runtime deps (required by src/, e.g. python-binance) + test deps
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f requirements-test.txt ]; then pip install -r requirements-test.txt; fi
       - name: Run tests
         run: |
           if [ -f requirements-test.txt ]; then
-            PYTHONPATH=${{ github.workspace }} pytest tests/ --cov=src -v
+            python -m pytest tests/ --cov=src -v
           else
             echo "No tests to run"
           fi
