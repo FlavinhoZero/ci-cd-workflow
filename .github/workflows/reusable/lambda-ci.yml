@@ -10,47 +10,13 @@ on:
         description: 'AWS Region'
         required: true
         default: 'sa-east-1'
-      lambda_function_name:
-        description: 'Lambda Function Name'
-        required: false
-      dynamodb_table_name:
-        description: 'DynamoDB Table Name'
-        required: false
-      sns_topic_name:
-        description: 'SNS Topic Name'
-        required: false
-      package_lambda:
-        description: 'Package Lambda function (true/false)'
-        required: true
-        default: 'true'
-      cognito_user_pool_id:
-        description: 'Cognito User Pool ID'
-        required: false
-      cognito_app_client_id:
-        description: 'Cognito App Client ID'
-        required: false
-      binance_testnet:
-        description: 'Use Binance Testnet (true/false)'
-        required: false
-        default: 'false'
-      binance_demo_mode:
-        description: 'Binance Demo Mode (true/false)'
-        required: false
-        default: 'false'
-      use_binance_proxy:
-        description: 'Use Binance Proxy (true/false)'
-        required: false
-        default: 'false'
-      binance_proxy_url:
-        description: 'Binance Proxy URL'
-        required: false
-        default: ''
-      proxy_fallback_enabled:
-        description: 'Proxy Fallback Enabled (true/false)'
-        required: false
-        default: 'false'
+      # Note: NO resource-name/variable inputs and no package flag.
+      # The Lambda package is assembled at Terraform runtime via the repo's
+      # terraform/build-lambda.sh (local-exec) — governance rule (Plan 010).
+      # All per-repo names (lambda name, tables, SNS, env vars) live in the
+      # repo's own terraform/ (locals.tf / variables.tf / tfvars) — never here.
     secrets:
-      - id: AWS_ACCOUNT_ID
+      AWS_ACCOUNT_ID:
         description: 'AWS Account ID'
         required: true
 
@@ -80,32 +46,9 @@ jobs:
             echo "No tests to run"
           fi
 
-  package:
-    name: Package Lambda
-    needs: test
-    if: inputs.package_lambda == 'true'
-    runs-on: ubuntu-latest
-    outputs:
-      package_created: ${{ steps.package.outputs.created }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Package Lambda
-        id: package
-        run: |
-          cd ${{ github.workspace }}
-          pip install -r requirements.txt -t lambda_package/
-          cp -r src/* lambda_package/
-          cd lambda_package
-          zip -r ../lambda_package.zip .
-          cd ..
-          echo "created=true" >> $GITHUB_OUTPUT
-          echo "Lambda package created successfully"
-
   plan:
     name: Terraform Plan
-    needs: [test, package]
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -114,6 +57,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # NOTE: no Lambda package job exists here anymore.
+      # The deployment package is assembled at Terraform runtime via the
+      # repo's terraform/build-lambda.sh (local-exec in main.tf).
+      # Governance rule (Plan 010, 2026-08-18).
 
       - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
@@ -128,26 +76,16 @@ jobs:
 
       - name: Set Terraform Variables
         run: |
-          echo "TF_VAR_lambda_function_name=${{ inputs.lambda_function_name }}" >> $GITHUB_ENV
           echo "TF_VAR_environment=prod" >> $GITHUB_ENV
-          if [ -n "${{ inputs.cognito_user_pool_id }}" ]; then
-            echo "TF_VAR_cognito_user_pool_id=${{ inputs.cognito_user_pool_id }}" >> $GITHUB_ENV
-          fi
-          if [ -n "${{ inputs.cognito_app_client_id }}" ]; then
-            echo "TF_VAR_cognito_app_client_id=${{ inputs.cognito_app_client_id }}" >> $GITHUB_ENV
-          fi
-          echo "TF_VAR_binance_testnet=${{ inputs.binance_testnet }}" >> $GITHUB_ENV
-          echo "TF_VAR_binance_demo_mode=${{ inputs.binance_demo_mode }}" >> $GITHUB_ENV
-          echo "TF_VAR_use_binance_proxy=${{ inputs.use_binance_proxy }}" >> $GITHUB_ENV
-          echo "TF_VAR_binance_proxy_url=${{ inputs.binance_proxy_url }}" >> $GITHUB_ENV
-          echo "TF_VAR_proxy_fallback_enabled=${{ inputs.proxy_fallback_enabled }}" >> $GITHUB_ENV
+          # No per-repo TF_VAR_* here — resource names come from the repo's
+          # own terraform/variables.tf defaults + locals.tf (governance rule 2026-08-18)
 
       - name: Terraform Init
         working-directory: terraform
         run: |
           terraform init \
             -backend-config="bucket=terraform-state-${{ inputs.aws_account_id }}" \
-            -backend-config="key=${{ github.repository_owner }}/${{ github.event.repository.name }}/terraform.tfstate" \
+            -backend-config="key=${{ github.repository }}/terraform.tfstate" \
             -backend-config="region=${{ inputs.aws_region }}" \
             -backend-config="encrypt=true" \
             -backend-config="dynamodb_table=terraform-lock"
@@ -156,19 +94,17 @@ jobs:
         working-directory: terraform
         run: terraform validate
 
-      - name: Terraform Refresh
-        working-directory: terraform
-        run: terraform refresh -compact-warnings
-
       - name: Terraform Plan
         working-directory: terraform
-        run: terraform plan -out=tfplan
+        # import {} blocks in repo HCL are applied automatically during plan
+        run: terraform plan -out=tfplan -input=false
 
       - name: Upload Terraform Plan
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: tfplan
           path: terraform/tfplan
+          if-no-files-found: error
 
   deploy-test:
     name: Deploy to Test
