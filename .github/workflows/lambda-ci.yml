@@ -5,9 +5,11 @@ on:
     inputs:
       aws_account_id:
         description: 'AWS Account ID'
+        type: string
         required: true
       aws_region:
         description: 'AWS Region'
+        type: string
         required: true
         default: 'sa-east-1'
       # Note: NO resource-name/variable inputs and no package flag.
