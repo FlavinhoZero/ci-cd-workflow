@@ -114,7 +114,7 @@ jobs:
       - name: Terraform Init
         working-directory: terraform
         run: |
-          terraform init \
+          terraform init -upgrade \
             -backend-config="bucket=terraform-state-${{ inputs.aws_account_id }}" \
             -backend-config="key=${{ github.repository }}/terraform.tfstate" \
             -backend-config="region=${{ inputs.aws_region }}" \
