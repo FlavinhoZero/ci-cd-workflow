@@ -15,10 +15,8 @@ on:
       # terraform/build-lambda.sh (local-exec) — governance rule (Plan 010).
       # All per-repo names (lambda name, tables, SNS, env vars) live in the
       # repo's own terraform/ (locals.tf / variables.tf / tfvars) — never here.
-    secrets:
-      AWS_ACCOUNT_ID:
-        description: 'AWS Account ID'
-        required: true
+      # NOTE: no secrets declared — aws_account_id is passed as input only,
+      # which avoids caller-side secret/vars mapping issues.
 
 jobs:
   test:
