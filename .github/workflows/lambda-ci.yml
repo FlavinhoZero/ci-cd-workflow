@@ -12,6 +12,12 @@ on:
         type: string
         required: true
         default: 'sa-east-1'
+      # Note: NO resource-name/variable inputs and no package flag.
+      # The Lambda package is assembled at Terraform runtime via the repo's
+      # terraform/build-lambda.sh (local-exec) — governance rule (Plan 010).
+      # All per-repo names (lambda name, tables, SNS, env vars) live in the
+      # repo's own terraform/ (locals.tf / variables.tf / tfvars) — never here.
+      # NOTE: no secrets declared — aws_account_id is passed as input only.
 
 jobs:
   test:
@@ -20,3 +26,59 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements-test.txt ]; then pip install -r requirements-test.txt; fi
+      - name: Run tests
+        run: |
+          if [ -f requirements-test.txt ]; then
+            PYTHONPATH=${{ github.workspace }} pytest tests/ --cov=src -v
+          else
+            echo "No tests to run"
+          fi
+
+  plan:
+    name: Terraform Plan
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/github-actions-deploy
+          aws-region: ${{ inputs.aws_region }}
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.0"
+      - name: Terraform Init
+        working-directory: terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=terraform-state-${{ inputs.aws_account_id }}" \
+            -backend-config="key=${{ github.repository }}/terraform.tfstate" \
+            -backend-config="region=${{ inputs.aws_region }}" \
+            -backend-config="encrypt=true" \
+            -backend-config="dynamodb_table=terraform-lock"
+      - name: Terraform Validate
+        working-directory: terraform
+        run: terraform validate
+      - name: Terraform Plan
+        working-directory: terraform
+        run: terraform plan -out=tfplan -input=false
+      - name: Upload Terraform Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: terraform/tfplan
+          if-no-files-found: error
