@@ -12,12 +12,11 @@ on:
         type: string
         required: true
         default: 'sa-east-1'
-      # Note: NO resource-name/variable inputs and no package flag.
-      # The Lambda package is assembled at Terraform runtime via the repo's
-      # terraform/build-lambda.sh (local-exec) — governance rule (Plan 010).
-      # All per-repo names (lambda name, tables, SNS, env vars) live in the
-      # repo's own terraform/ (locals.tf / variables.tf / tfvars) — never here.
-      # NOTE: no secrets declared — aws_account_id is passed as input only.
+      # Note: NO resource-name/variable inputs — per-governance rule 2026-08-18
+      # all resource names / TF_VAR_* live in the consuming repo's terraform/
+      # (variables.tf defaults / locals.tf / tfvars). This workflow only gets
+      # orchestration inputs (account id, region) and the build is done HERE
+      # (the workflow owns the Lambda packaging, not the lambda repository).
 
 jobs:
   test:
@@ -42,9 +41,49 @@ jobs:
             echo "No tests to run"
           fi
 
+  package:
+    name: Package Lambda
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Build Lambda package
+        run: |
+          set -euo pipefail
+          mkdir -p lambda_package
+          # Install runtime deps into the package dir
+          if [ -f requirements.txt ]; then
+            pip install --upgrade pip --quiet
+            pip install --quiet --target lambda_package -r requirements.txt
+          fi
+          # Copy application source
+          if [ -d src ]; then
+            cp -R src/. lambda_package/
+          fi
+          # Remove pycache/pyc
+          find lambda_package -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+          find lambda_package -name '*.pyc' -delete 2>/dev/null || true
+      - name: Zip Lambda package
+        run: |
+          cd lambda_package
+          zip -qr ../lambda_package.zip .
+          cd ..
+          ls -lh lambda_package.zip
+      - name: Upload Lambda package
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-package
+          path: lambda_package.zip
+          if-no-files-found: error
+
   plan:
     name: Terraform Plan
-    needs: test
+    needs: [test, package]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -52,6 +91,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Download Lambda package
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-package
+          path: ${{ github.workspace }}
       - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -82,3 +126,75 @@ jobs:
           name: tfplan
           path: terraform/tfplan
           if-no-files-found: error
+
+  deploy-test:
+    name: Deploy to Test
+    needs: plan
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download Lambda package
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-package
+          path: ${{ github.workspace }}
+      - name: Download Terraform Plan
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: terraform/tfplan/artifact
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/github-actions-deploy
+          aws-region: ${{ inputs.aws_region }}
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.0"
+      - name: Terraform Apply
+        working-directory: terraform
+        run: |
+          mv tfplan/artifact/tfplan ./tfplan
+          terraform apply -auto-approve ./tfplan
+
+  deploy-production:
+    name: Deploy to Production
+    needs: plan
+    if: (github.ref == 'refs/heads/main' && github.event_name != 'workflow_dispatch') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download Lambda package
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-package
+          path: ${{ github.workspace }}
+      - name: Download Terraform Plan
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: terraform/tfplan/artifact
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/github-actions-deploy
+          aws-region: ${{ inputs.aws_region }}
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.0"
+      - name: Terraform Apply
+        working-directory: terraform
+        run: |
+          mv tfplan/artifact/tfplan ./tfplan
+          terraform apply -auto-approve ./tfplan
