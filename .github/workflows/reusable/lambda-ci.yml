@@ -23,6 +23,32 @@ on:
         description: 'Package Lambda function (true/false)'
         required: true
         default: 'true'
+      cognito_user_pool_id:
+        description: 'Cognito User Pool ID'
+        required: false
+      cognito_app_client_id:
+        description: 'Cognito App Client ID'
+        required: false
+      binance_testnet:
+        description: 'Use Binance Testnet (true/false)'
+        required: false
+        default: 'false'
+      binance_demo_mode:
+        description: 'Binance Demo Mode (true/false)'
+        required: false
+        default: 'false'
+      use_binance_proxy:
+        description: 'Use Binance Proxy (true/false)'
+        required: false
+        default: 'false'
+      binance_proxy_url:
+        description: 'Binance Proxy URL'
+        required: false
+        default: ''
+      proxy_fallback_enabled:
+        description: 'Proxy Fallback Enabled (true/false)'
+        required: false
+        default: 'false'
     secrets:
       - id: AWS_ACCOUNT_ID
         description: 'AWS Account ID'
@@ -99,6 +125,22 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.6.0"
+
+      - name: Set Terraform Variables
+        run: |
+          echo "TF_VAR_lambda_function_name=${{ inputs.lambda_function_name }}" >> $GITHUB_ENV
+          echo "TF_VAR_environment=prod" >> $GITHUB_ENV
+          if [ -n "${{ inputs.cognito_user_pool_id }}" ]; then
+            echo "TF_VAR_cognito_user_pool_id=${{ inputs.cognito_user_pool_id }}" >> $GITHUB_ENV
+          fi
+          if [ -n "${{ inputs.cognito_app_client_id }}" ]; then
+            echo "TF_VAR_cognito_app_client_id=${{ inputs.cognito_app_client_id }}" >> $GITHUB_ENV
+          fi
+          echo "TF_VAR_binance_testnet=${{ inputs.binance_testnet }}" >> $GITHUB_ENV
+          echo "TF_VAR_binance_demo_mode=${{ inputs.binance_demo_mode }}" >> $GITHUB_ENV
+          echo "TF_VAR_use_binance_proxy=${{ inputs.use_binance_proxy }}" >> $GITHUB_ENV
+          echo "TF_VAR_binance_proxy_url=${{ inputs.binance_proxy_url }}" >> $GITHUB_ENV
+          echo "TF_VAR_proxy_fallback_enabled=${{ inputs.proxy_fallback_enabled }}" >> $GITHUB_ENV
 
       - name: Terraform Init
         working-directory: terraform
