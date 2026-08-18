@@ -79,11 +79,27 @@ jobs:
           zip -qr ../lambda_package.zip .
           cd ..
           ls -lh lambda_package.zip
+      - name: Setup Terraform (pre-fetch provider)
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.0"
+      - name: Pre-fetch Terraform providers
+        working-directory: terraform
+        run: |
+          # Download/verify providers here (this job's network is reliable),
+          # so the plan job doesn't hit "error checking signature".
+          terraform init -backend=false -input=false
       - name: Upload Lambda package
         uses: actions/upload-artifact@v4
         with:
           name: lambda-package
           path: lambda_package.zip
+          if-no-files-found: error
+      - name: Upload Terraform provider cache
+        uses: actions/upload-artifact@v4
+        with:
+          name: tf-provider-cache
+          path: terraform/.terraform
           if-no-files-found: error
 
   plan:
@@ -102,6 +118,11 @@ jobs:
         with:
           name: lambda-package
           path: ${{ github.workspace }}
+      - name: Download Terraform provider cache
+        uses: actions/download-artifact@v4
+        with:
+          name: tf-provider-cache
+          path: terraform/.terraform
       - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -114,7 +135,7 @@ jobs:
       - name: Terraform Init
         working-directory: terraform
         run: |
-          terraform init -upgrade \
+          terraform init \
             -backend-config="bucket=terraform-state-${{ inputs.aws_account_id }}" \
             -backend-config="key=${{ github.repository }}/terraform.tfstate" \
             -backend-config="region=${{ inputs.aws_region }}" \
@@ -150,6 +171,11 @@ jobs:
         with:
           name: lambda-package
           path: ${{ github.workspace }}
+      - name: Download Terraform provider cache
+        uses: actions/download-artifact@v4
+        with:
+          name: tf-provider-cache
+          path: terraform/.terraform
       - name: Download Terraform Plan
         uses: actions/download-artifact@v4
         with:
@@ -187,6 +213,11 @@ jobs:
         with:
           name: lambda-package
           path: ${{ github.workspace }}
+      - name: Download Terraform provider cache
+        uses: actions/download-artifact@v4
+        with:
+          name: tf-provider-cache
+          path: terraform/.terraform
       - name: Download Terraform Plan
         uses: actions/download-artifact@v4
         with:
