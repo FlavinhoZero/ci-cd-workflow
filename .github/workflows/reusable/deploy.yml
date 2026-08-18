@@ -1,0 +1,88 @@
+name: Deploy to Production
+
+on:
+  workflow_call:
+    inputs:
+      github_token:
+        description: 'GitHub Token for OIDC authentication'
+        required: true
+      aws_account_id:
+        description: 'AWS Account ID'
+        required: true
+      aws_region:
+        description: 'AWS Region'
+        required: true
+        default: 'sa-east-1'
+      lambda_function_name:
+        description: 'Lambda Function Name'
+        required: false
+      dynamodb_table_name:
+        description: 'DynamoDB Table Name'
+        required: false
+      sns_topic_name:
+        description: 'SNS Topic Name'
+        required: false
+    secrets:
+      - id: AWS_ACCOUNT_ID
+        description: 'AWS Account ID'
+        required: true
+
+jobs:
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/github-actions-deploy
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.0"
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=terraform-state-${{ inputs.aws_account_id }}" \
+            -backend-config="key=${{ github.repository_owner }}/${{ github.event.repository.name }}/terraform.tfstate" \
+            -backend-config="region=${{ inputs.aws_region }}" \
+            -backend-config="encrypt=true" \
+            -backend-config="dynamodb_table=terraform-lock"
+
+      - name: Terraform Plan
+        working-directory: terraform
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: terraform
+        run: terraform apply -auto-approve tfplan
+
+      - name: Update Lambda (if needed)
+        if: inputs.lambda_function_name != ''
+        run: |
+          echo "Lambda function: ${{ inputs.lambda_function_name }}"
+          # Add Lambda update logic here
+
+      - name: Create DynamoDB Table (if needed)
+        if: inputs.dynamodb_table_name != ''
+        run: |
+          echo "DynamoDB Table: ${{ inputs.dynamodb_table_name }}"
+          # Add DynamoDB creation logic here
+
+      - name: Create SNS Topic (if needed)
+        if: inputs.sns_topic_name != ''
+        run: |
+          echo "SNS Topic: ${{ inputs.sns_topic_name }}"
+          # Add SNS topic creation logic here

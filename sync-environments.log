@@ -1,0 +1,8 @@
+[2026-08-18 08:22:44] [INFO] =========================================
+[2026-08-18 08:22:44] [INFO] Iniciando sync-environments.ps1
+[2026-08-18 08:22:44] [INFO] AWS Account ID: AWS_ACCOUNT_ID_PLACEHOLDER
+[2026-08-18 08:22:44] [INFO] Região: sa-east-1
+[2026-08-18 08:22:44] [INFO] Reviewer: FlavinhoZero
+[2026-08-18 08:22:44] [INFO] =========================================
+[2026-08-18 08:22:44] [INFO] Configurando Environments para repo01...
+[2026-08-18 08:22:44] [INFO] Criando Environment test...

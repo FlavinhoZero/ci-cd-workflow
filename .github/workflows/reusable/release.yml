@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  workflow_call:
+    inputs:
+      github_token:
+        description: 'GitHub Token for OIDC authentication'
+        required: true
+      aws_account_id:
+        description: 'AWS Account ID'
+        required: true
+      aws_region:
+        description: 'AWS Region'
+        required: true
+        default: 'sa-east-1'
+      version:
+        description: 'Version tag to create (e.g., v1.0.0)'
+        required: true
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/github-actions-deploy
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.0"
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=terraform-state-${{ inputs.aws_account_id }}" \
+            -backend-config="key=${{ github.repository_owner }}/${{ github.event.repository.name }}/terraform.tfstate" \
+            -backend-config="region=${{ inputs.aws_region }}" \
+            -backend-config="encrypt=true" \
+            -backend-config="dynamodb_table=terraform-lock"
+
+      - name: Generate Terraform Lock File
+        working-directory: terraform
+        run: |
+          terraform show -json > terraform-lock.json
+          echo "Terraform lock file generated"
+
+      - name: Create Git Tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${{ inputs.version }}
+          git push origin ${{ inputs.version }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ inputs.version }}
+          name: Release ${{ inputs.version }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ inputs.github_token }}
+
+      - name: Update Terraform State Version
+        working-directory: terraform
+        run: |
+          terraform state push terraform.tfstate
+          echo "Release ${{ inputs.version }} completed successfully"

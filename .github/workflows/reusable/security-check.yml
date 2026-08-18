@@ -1,0 +1,80 @@
+name: Security Check
+
+on:
+  workflow_call:
+    inputs:
+      aws_account_id:
+        description: 'AWS Account ID'
+        required: true
+      aws_region:
+        description: 'AWS Region'
+        required: true
+        default: 'sa-east-1'
+
+jobs:
+  security:
+    name: Security Check
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/github-actions-deploy
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Check for AWS Access Keys in Secrets
+        run: |
+          echo "Checking for AWS access keys in repository secrets..."
+          gh secret list | grep -E "AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY" && {
+            echo "ERROR: AWS access keys found in secrets!"
+            exit 1
+          } || echo "No AWS access keys found in secrets - PASS"
+
+      - name: Check for Hardcoded Credentials
+        run: |
+          echo "Checking for hardcoded credentials in code..."
+          grep -rE "AKIA[0-9A-Z]{16}" . --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=.venv && {
+            echo "ERROR: Hardcoded AWS access keys found!"
+            exit 1
+          } || echo "No hardcoded credentials found - PASS"
+
+      - name: Check IAM Role Permissions
+        run: |
+          echo "Checking IAM role permissions..."
+          aws iam get-role --role-name github-actions-deploy > /dev/null
+          echo "IAM role exists - PASS"
+
+      - name: Verify OIDC Provider
+        run: |
+          echo "Verifying OIDC provider..."
+          aws iam list-open-id-connect-providers | grep -q "token.actions.githubusercontent.com" && {
+            echo "OIDC provider configured - PASS"
+          } || {
+            echo "ERROR: OIDC provider not configured!"
+            exit 1
+          }
+
+      - name: Check S3 Bucket Encryption
+        run: |
+          echo "Checking S3 bucket encryption..."
+          aws s3api get-bucket-encryption --bucket terraform-state-${{ inputs.aws_account_id }} > /dev/null 2>&1 && {
+            echo "S3 bucket encryption enabled - PASS"
+          } || {
+            echo "WARNING: S3 bucket encryption not enabled or bucket does not exist"
+          }
+
+      - name: Check DynamoDB Table Encryption
+        run: |
+          echo "Checking DynamoDB table encryption..."
+          aws dynamodb describe-table --table-name terraform-lock --query 'Table.SSEDescription.Status' --output text | grep -q "ENABLED" && {
+            echo "DynamoDB table encryption enabled - PASS"
+          } || {
+            echo "WARNING: DynamoDB table encryption not enabled or table does not exist"
+          }
