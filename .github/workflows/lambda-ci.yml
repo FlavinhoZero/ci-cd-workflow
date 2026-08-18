@@ -198,6 +198,16 @@ jobs:
         with:
           terraform_version: "1.6.0"
 
+      - name: Terraform Init (for output)
+        working-directory: terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=terraform-state-${{ inputs.aws_account_id }}" \
+            -backend-config="key=${{ github.repository }}/terraform.tfstate" \
+            -backend-config="region=${{ inputs.aws_region }}" \
+            -backend-config="encrypt=true" \
+            -backend-config="dynamodb_table=terraform-lock"
+
       - name: Get Version from Terraform
         id: version
         working-directory: terraform
