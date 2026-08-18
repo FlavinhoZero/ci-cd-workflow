@@ -29,10 +29,9 @@ on:
         required: false
         type: string
     secrets:
-      - id: AWS_ACCOUNT_ID
+      AWS_ACCOUNT_ID:
         description: 'AWS Account ID'
         required: true
-        type: string
 
 jobs:
   test:
