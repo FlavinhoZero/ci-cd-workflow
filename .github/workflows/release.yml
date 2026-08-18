@@ -6,16 +6,20 @@ on:
       github_token:
         description: 'GitHub Token for OIDC authentication'
         required: true
+        type: string
       aws_account_id:
         description: 'AWS Account ID'
         required: true
+        type: string
       aws_region:
         description: 'AWS Region'
         required: true
+        type: string
         default: 'sa-east-1'
       version:
         description: 'Version tag to create (e.g., v1.0.0)'
         required: true
+        type: string
 
 jobs:
   release:

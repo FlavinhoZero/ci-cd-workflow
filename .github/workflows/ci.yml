@@ -6,26 +6,33 @@ on:
       github_token:
         description: 'GitHub Token for OIDC authentication'
         required: true
+        type: string
       aws_account_id:
         description: 'AWS Account ID'
         required: true
+        type: string
       aws_region:
         description: 'AWS Region'
         required: true
+        type: string
         default: 'sa-east-1'
       lambda_function_name:
         description: 'Lambda Function Name'
         required: false
+        type: string
       dynamodb_table_name:
         description: 'DynamoDB Table Name'
         required: false
+        type: string
       sns_topic_name:
         description: 'SNS Topic Name'
         required: false
+        type: string
     secrets:
       - id: AWS_ACCOUNT_ID
         description: 'AWS Account ID'
         required: true
+        type: string
 
 jobs:
   test:

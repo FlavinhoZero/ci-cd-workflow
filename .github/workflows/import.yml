@@ -6,19 +6,24 @@ on:
       aws_account_id:
         description: 'AWS Account ID'
         required: true
+        type: string
       aws_region:
         description: 'AWS Region'
         required: true
+        type: string
         default: 'sa-east-1'
       resource_type:
         description: 'Type of resource to import (lambda, dynamodb, sns, sqs)'
         required: true
+        type: string
       resource_name:
         description: 'Name of the resource to import'
         required: true
+        type: string
       terraform_resource_address:
         description: 'Terraform resource address (e.g., aws_lambda_function.my_lambda)'
         required: true
+        type: string
 
 jobs:
   import:

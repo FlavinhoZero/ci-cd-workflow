@@ -6,9 +6,11 @@ on:
       aws_account_id:
         description: 'AWS Account ID'
         required: true
+        type: string
       aws_region:
         description: 'AWS Region'
         required: true
+        type: string
         default: 'sa-east-1'
 
 jobs:

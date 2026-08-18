@@ -6,13 +6,16 @@ on:
       aws_account_id:
         description: 'AWS Account ID'
         required: true
+        type: string
       aws_region:
         description: 'AWS Region'
         required: true
+        type: string
         default: 'sa-east-1'
       backup_location:
         description: 'S3 location for state backup (optional)'
         required: false
+        type: string
         default: ''
 
 jobs:
