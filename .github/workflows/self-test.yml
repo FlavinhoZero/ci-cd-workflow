@@ -1,0 +1,16 @@
+name: Self Caller Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+jobs:
+  test-call:
+    uses: ./.github/workflows/lambda-ci.yml
+    with:
+      aws_account_id: "AWS_ACCOUNT_ID_PLACEHOLDER"
+      aws_region: "sa-east-1"
