@@ -188,7 +188,10 @@ jobs:
   deploy-test:
     name: Deploy to Test
     needs: plan
-    if: github.ref == 'refs/heads/develop'
+    # Deploy to test only on develop pushes/PRs. Skip when this run is a
+    # confirmed production deploy (manual dispatch) so we don't re-apply to
+    # test at the same time as production.
+    if: github.ref == 'refs/heads/develop' && !(github.event_name == 'workflow_dispatch' && inputs.confirm_production_deploy == true)
     runs-on: ubuntu-latest
     environment: test
     permissions:
