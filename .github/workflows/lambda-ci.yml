@@ -12,6 +12,11 @@ on:
         type: string
         required: true
         default: 'sa-east-1'
+      confirm_production_deploy:
+        description: 'Explicit confirmation to deploy to production (true/false). Deploy to production ONLY runs via workflow_dispatch with this set to true.'
+        type: boolean
+        required: false
+        default: false
       # Note: NO resource-name/variable inputs — per-governance rule 2026-08-18
       # all resource names / TF_VAR_* live in the consuming repo's terraform/
       # (variables.tf defaults / locals.tf / tfvars). This workflow only gets
@@ -249,7 +254,9 @@ jobs:
   deploy-production:
     name: Deploy to Production
     needs: plan
-    if: (github.ref == 'refs/heads/main' && github.event_name != 'workflow_dispatch') || github.event_name == 'workflow_dispatch'
+    # Security: deploy to production ONLY via manual workflow_dispatch with
+    # explicit confirmation. Never automatic on push/merge to main.
+    if: github.event_name == 'workflow_dispatch' && inputs.confirm_production_deploy == true
     runs-on: ubuntu-latest
     environment: production
     permissions:
