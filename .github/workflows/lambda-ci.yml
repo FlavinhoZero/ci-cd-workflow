@@ -161,7 +161,7 @@ jobs:
       - name: Terraform Init
         working-directory: terraform
         run: |
-          terraform init \
+          terraform init -lockfile=readonly \
             -backend-config="bucket=terraform-state-${{ inputs.aws_account_id }}" \
             -backend-config="key=${{ github.repository }}/terraform.tfstate" \
             -backend-config="region=${{ inputs.aws_region }}" \
@@ -230,6 +230,15 @@ jobs:
           }
           EOF
           echo "TF_CLI_CONFIG_FILE=$HOME/.terraformrc" >> "$GITHUB_ENV"
+      - name: Terraform Init (lockfile readonly)
+        working-directory: terraform
+        run: |
+          terraform init -lockfile=readonly \
+            -backend-config="bucket=terraform-state-${{ inputs.aws_account_id }}" \
+            -backend-config="key=${{ github.repository }}/terraform.tfstate" \
+            -backend-config="region=${{ inputs.aws_region }}" \
+            -backend-config="encrypt=true" \
+            -backend-config="dynamodb_table=terraform-lock"
       - name: Terraform Apply
         working-directory: terraform
         run: |
@@ -287,6 +296,15 @@ jobs:
           }
           EOF
           echo "TF_CLI_CONFIG_FILE=$HOME/.terraformrc" >> "$GITHUB_ENV"
+      - name: Terraform Init (lockfile readonly)
+        working-directory: terraform
+        run: |
+          terraform init -lockfile=readonly \
+            -backend-config="bucket=terraform-state-${{ inputs.aws_account_id }}" \
+            -backend-config="key=${{ github.repository }}/terraform.tfstate" \
+            -backend-config="region=${{ inputs.aws_region }}" \
+            -backend-config="encrypt=true" \
+            -backend-config="dynamodb_table=terraform-lock"
       - name: Terraform Apply
         working-directory: terraform
         run: |
