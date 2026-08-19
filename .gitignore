@@ -4,3 +4,5 @@ scripts/*.log
 *.tfstate
 *.tfstate.*
 .DS_Store
+# Local config with internal repo names - NEVER commit
+scripts/repos-config.local.json

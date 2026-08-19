@@ -1,31 +1,34 @@
-# sync-environments.ps1 - Script para criar Environments em todos os repositórios TradBin
+# sync-environments.ps1 - Script para criar Environments nos repositÃ³rios do projeto
 
 <#
 .SYNOPSIS
-    Script para criar Environments test/production em múltiplos repositórios TradBin.
+    Script para criar Environments test/production em mÃºltiplos repositÃ³rios.
 
 .DESCRIPTION
-    Este script cria os Environments test e production em todos os repositórios Lambda/DynamoDB
-    do TradBin, configurando as variáveis necessárias.
+    Este script cria os Environments test e production nos repositÃ³rios do projeto,
+    configurando as variÃ¡veis necessÃ¡rias.
+
+    IMPORTANTE: A lista de repositÃ³rios Ã© lida de 'repos-config.local.json' (NÃƒO versionado).
+    NÃ£o hÃ¡ nomes de repositÃ³rios internos hardcoded neste script.
 
 .PARAMETER AWSAccountId
-    ID da conta AWS a ser configurada nas variáveis de ambiente.
+    ID da conta AWS a ser configurada nas variÃ¡veis de ambiente.
 
 .PARAMETER Region
-    Região AWS padrão (padrão: sa-east-1).
+    RegiÃ£o AWS padrÃ£o (padrÃ£o: sa-east-1).
 
 .PARAMETER Reviewer
-    Login do reviewer obrigatório para o ambiente production.
+    Login do reviewer obrigatÃ³rio para o ambiente production.
 
 .EXAMPLE
-    .\sync-environments.ps1 -AWSAccountId "AWS_ACCOUNT_ID_PLACEHOLDER" -Reviewer "FlavinhoZero"
+    .\sync-environments.ps1 -AWSAccountId "<AWS_ACCOUNT_ID>" -Reviewer "<OWNER>"
 #>
 
 param(
     [Parameter(Mandatory=$true)]
     [string]$AWSAccountId,
     [string]$Region = "sa-east-1",
-    [string]$Reviewer = "FlavinhoZero"
+    [string]$Reviewer = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -39,17 +42,21 @@ function Write-Log {
     Add-Content -Path $script:LogPath -Value $logEntry
 }
 
-# Lista de repositórios TradBin
-$Repos = @(
-    "repo01", "repo02", "repo03", "repo04",
-    "repo05", "repo06", "repo07", "repo08",
-    "repo09", "repo10", "repo11", "repo12", "repo13"
-)
+# Ler configuraÃ§Ã£o local (owner + repos) â€” arquivo NÃƒO versionado
+$configPath = Join-Path $PSScriptRoot "repos-config.local.json"
+if (-not (Test-Path $configPath)) {
+    Write-Error "Arquivo de configuraÃ§Ã£o nÃ£o encontrado: $configPath. Copie repos-config.local.example.json para repos-config.local.json e preencha."
+    exit 1
+}
+$config = Get-Content $configPath -Raw | ConvertFrom-Json
+$Owner = $config.owner
+$Repos = @($config.repos)
+if ($Reviewer -eq "") { $Reviewer = $Owner }
 
 Write-Log "========================================="
 Write-Log "Iniciando sync-environments.ps1"
 Write-Log "AWS Account ID: $AWSAccountId"
-Write-Log "Região: $Region"
+Write-Log "RegiÃ£o: $Region"
 Write-Log "Reviewer: $Reviewer"
 Write-Log "========================================="
 
@@ -58,19 +65,19 @@ foreach ($repo in $Repos) {
     
     # Criar Environment test
     Write-Log "Criando Environment test..."
-    gh api --method PUT "repos/FlavinhoZero/$repo/environments/test" 2>&1 | Out-Null
-    gh variable set AWS_ACCOUNT_ID --env test --repo "FlavinhoZero/$repo" --body "$AWSAccountId" 2>&1 | Out-Null
-    gh variable set TF_VAR_region --env test --repo "FlavinhoZero/$repo" --body $Region 2>&1 | Out-Null
+    gh api --method PUT "repos/$Owner/$repo/environments/test" 2>&1 | Out-Null
+    gh variable set AWS_ACCOUNT_ID --env test --repo "$Owner/$repo" --body "$AWSAccountId" 2>&1 | Out-Null
+    gh variable set TF_VAR_region --env test --repo "$Owner/$repo" --body $Region 2>&1 | Out-Null
     
     # Criar Environment production
     Write-Log "Criando Environment production..."
-    gh api --method PUT "repos/FlavinhoZero/$repo/environments/production" 2>&1 | Out-Null
-    gh variable set AWS_ACCOUNT_ID --env production --repo "FlavinhoZero/$repo" --body "$AWSAccountId" 2>&1 | Out-Null
-    gh variable set TF_VAR_region --env production --repo "FlavinhoZero/$repo" --body $Region 2>&1 | Out-Null
+    gh api --method PUT "repos/$Owner/$repo/environments/production" 2>&1 | Out-Null
+    gh variable set AWS_ACCOUNT_ID --env production --repo "$Owner/$repo" --body "$AWSAccountId" 2>&1 | Out-Null
+    gh variable set TF_VAR_region --env production --repo "$Owner/$repo" --body $Region 2>&1 | Out-Null
     
     Write-Log "Environments configurados para $repo"
 }
 
 Write-Log "========================================="
-Write-Log "sync-environments.ps1 concluído!"
+Write-Log "sync-environments.ps1 concluÃ­do!"
 Write-Log "========================================="
