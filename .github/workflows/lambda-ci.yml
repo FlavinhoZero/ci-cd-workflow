@@ -201,7 +201,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: tfplan
-          path: terraform/tfplan/artifact
+          path: terraform/tfplan-download
       - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -233,7 +233,8 @@ jobs:
       - name: Terraform Apply
         working-directory: terraform
         run: |
-          mv tfplan/artifact/tfplan ./tfplan
+          ls -la tfplan-download/
+          cp tfplan-download/tfplan ./tfplan
           terraform apply -auto-approve ./tfplan
 
   deploy-production:
@@ -257,7 +258,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: tfplan
-          path: terraform/tfplan/artifact
+          path: terraform/tfplan-download
       - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -289,5 +290,6 @@ jobs:
       - name: Terraform Apply
         working-directory: terraform
         run: |
-          mv tfplan/artifact/tfplan ./tfplan
+          ls -la tfplan-download/
+          cp tfplan-download/tfplan ./tfplan
           terraform apply -auto-approve ./tfplan
