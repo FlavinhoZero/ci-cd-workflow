@@ -264,7 +264,7 @@ jobs:
     environment: production
     permissions:
       id-token: write
-      contents: read
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -321,3 +321,14 @@ jobs:
           ls -la tfplan-download/
           cp tfplan-download/tfplan ./tfplan
           terraform apply -auto-approve ./tfplan
+      # After a successful production deploy, sync the source branch into main
+      # so main always reflects what is actually running in production.
+      - name: Merge source branch into main
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout main
+          git merge --no-edit "origin/${{ github.ref_name }}"
+          git push origin main
