@@ -58,24 +58,18 @@ jobs:
           pip-audit -r requirements.txt -r requirements-test.txt --desc --format=json --output=pip-audit-report.json || true
           cat pip-audit-report.json | jq '.vulnerabilities[] | "\(.package) \(.version) \(.id) \(.description)"' -r || true
 
-      - name: Security scan - Trivy
+      - name: Security scan - Trivy (informational, log output)
         if: always()
         uses: aquasecurity/trivy-action@f9424c10c36e288d5fa79bd3dfd1aeb2d6eae808  # v0.33.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
+          format: 'table'
           severity: 'CRITICAL,HIGH'
           ignore-unfixed: true
           vuln-type: 'os,library'
-
-      - name: Upload Trivy results
-        if: always()
-        uses: github/codeql-action/upload-sarif@6d786de4d6f3531a740e445b53a42b622bbbace8  # v3
-        with:
-          sarif_file: 'trivy-results.sarif'
-          category: 'trivy'
+          exit-code: '0'
+          cache: 'false'
 
   package:
     name: Package Lambda
