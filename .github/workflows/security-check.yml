@@ -1,4 +1,4 @@
-name: Security Check
+﻿name: Security Check
 
 on:
   workflow_call:
@@ -23,10 +23,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4
 
       - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c  # v4
         with:
           role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/github-actions-deploy
           aws-region: ${{ inputs.aws_region }}

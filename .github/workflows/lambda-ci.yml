@@ -1,4 +1,4 @@
-name: Lambda CI/CD Pipeline
+﻿name: Lambda CI/CD Pipeline
 
 on:
   workflow_call:
@@ -17,7 +17,7 @@ on:
         type: boolean
         required: false
         default: false
-      # Note: NO resource-name/variable inputs — per-governance rule 2026-08-18
+      # Note: NO resource-name/variable inputs â€” per-governance rule 2026-08-18
       # all resource names / TF_VAR_* live in the consuming repo's terraform/
       # (variables.tf defaults / locals.tf / tfvars). This workflow only gets
       # orchestration inputs (account id, region) and the build is done HERE
@@ -32,17 +32,17 @@ jobs:
       AWS_DEFAULT_REGION: ${{ inputs.aws_region }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v5
         with:
           python-version: '3.11'
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           # runtime deps (required by src/, e.g. python-binance) + test deps
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f requirements-test.txt ]; then pip install -r requirements-test.txt; fi
+          if [ -f requirements.txt ]; then pip install --only-binary :all: -r requirements.txt; fi
+          if [ -f requirements-test.txt ]; then pip install --only-binary :all: -r requirements-test.txt; fi
       - name: Run tests
         run: |
           if [ -f requirements-test.txt ]; then
@@ -51,15 +51,41 @@ jobs:
             echo "No tests to run"
           fi
 
+      - name: Security scan - pip-audit
+        if: always() && hashFiles('requirements*.txt') != ''
+        run: |
+          pip install --only-binary :all: pip-audit
+          pip-audit -r requirements.txt -r requirements-test.txt --desc --format=json --output=pip-audit-report.json || true
+          cat pip-audit-report.json | jq '.vulnerabilities[] | "\(.package) \(.version) \(.id) \(.description)"' -r || true
+
+      - name: Security scan - Trivy
+        if: always()
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+
+      - name: Upload Trivy results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: 'trivy'
+
   package:
     name: Package Lambda
     needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v5
         with:
           python-version: '3.11'
       - name: Build Lambda package
@@ -69,7 +95,7 @@ jobs:
           # Install runtime deps into the package dir
           if [ -f requirements.txt ]; then
             pip install --upgrade pip --quiet
-            pip install --quiet --target lambda_package -r requirements.txt
+            pip install --only-binary :all: --quiet --target lambda_package -r requirements.txt
           fi
           # Copy application source
           if [ -d src ]; then
@@ -85,7 +111,7 @@ jobs:
           cd ..
           ls -lh lambda_package.zip
       - name: Setup Terraform (pre-fetch provider)
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v3
         with:
           terraform_version: "1.6.0"
       - name: Pre-fetch Terraform providers (filesystem mirror)
@@ -113,7 +139,7 @@ jobs:
           EOF
           echo "TF_CLI_CONFIG_FILE=$HOME/.terraformrc" >> "$GITHUB_ENV"
       - name: Upload Lambda package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v4
         with:
           name: lambda-package
           path: lambda_package.zip
@@ -129,19 +155,19 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4
       - name: Download Lambda package
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v4
         with:
           name: lambda-package
           path: ${{ github.workspace }}
       - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c  # v4
         with:
           role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/github-actions-deploy
           aws-region: ${{ inputs.aws_region }}
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v3
         with:
           terraform_version: "1.6.0"
       - name: Configure provider filesystem mirror
@@ -179,7 +205,7 @@ jobs:
         working-directory: terraform
         run: terraform plan -out=tfplan -input=false
       - name: Upload Terraform Plan
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v4
         with:
           name: tfplan
           path: terraform/tfplan
@@ -199,24 +225,24 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4
       - name: Download Lambda package
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v4
         with:
           name: lambda-package
           path: ${{ github.workspace }}
       - name: Download Terraform Plan
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v4
         with:
           name: tfplan
           path: terraform/tfplan-download
       - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c  # v4
         with:
           role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/github-actions-deploy
           aws-region: ${{ inputs.aws_region }}
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v3
         with:
           terraform_version: "1.6.0"
       - name: Configure provider filesystem mirror
@@ -267,24 +293,24 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4
       - name: Download Lambda package
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v4
         with:
           name: lambda-package
           path: ${{ github.workspace }}
       - name: Download Terraform Plan
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v4
         with:
           name: tfplan
           path: terraform/tfplan-download
       - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c  # v4
         with:
           role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/github-actions-deploy
           aws-region: ${{ inputs.aws_region }}
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v3
         with:
           terraform_version: "1.6.0"
       - name: Configure provider filesystem mirror

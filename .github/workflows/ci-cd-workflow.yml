@@ -1,4 +1,4 @@
-name: CI/CD Workflow
+﻿name: CI/CD Workflow
 
 on:
   push:
@@ -19,17 +19,17 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v5
         with:
           python-version: '3.11'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements-test.txt ]; then pip install -r requirements-test.txt; fi
+          if [ -f requirements-test.txt ]; then pip install --only-binary :all: -r requirements-test.txt; fi
 
       - name: Run tests
         run: |
@@ -38,6 +38,32 @@ jobs:
           else
             echo "No tests to run"
           fi
+
+      - name: Security scan - pip-audit
+        if: always() && hashFiles('requirements*.txt') != ''
+        run: |
+          pip install --only-binary :all: pip-audit
+          pip-audit -r requirements.txt -r requirements-test.txt --desc --format=json --output=pip-audit-report.json || true
+          cat pip-audit-report.json | jq '.vulnerabilities[] | "\(.package) \(.version) \(.id) \(.description)"' -r || true
+
+      - name: Security scan - Trivy
+        if: always()
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+
+      - name: Upload Trivy results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: 'trivy'
 
   plan:
     name: Terraform Plan
@@ -49,16 +75,16 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4
 
       - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c  # v4
         with:
           role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/github-actions-deploy
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v3
         with:
           terraform_version: "1.6.0"
 
@@ -81,7 +107,7 @@ jobs:
         run: terraform plan -out=tfplan
 
       - name: Upload Terraform Plan
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v4
         with:
           name: tfplan
           path: terraform/tfplan
@@ -98,22 +124,22 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4
 
       - name: Download Terraform Plan
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v4
         with:
           name: tfplan
           path: terraform/
 
       - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c  # v4
         with:
           role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/github-actions-deploy
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v3
         with:
           terraform_version: "1.6.0"
 
@@ -132,16 +158,16 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4
 
       - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c  # v4
         with:
           role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/github-actions-deploy
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v3
         with:
           terraform_version: "1.6.0"
 
@@ -160,7 +186,7 @@ jobs:
           git push origin ${{ steps.version.outputs.version }}
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@fe965f7af51af5f2602596916f38a38df2e33de0  # v1
         with:
           tag_name: ${{ steps.version.outputs.version }}
           name: Release ${{ steps.version.outputs.version }}

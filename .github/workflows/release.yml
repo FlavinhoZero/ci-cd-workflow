@@ -1,4 +1,4 @@
-name: Release
+﻿name: Release
 
 on:
   workflow_call:
@@ -31,16 +31,16 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4
 
       - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c  # v4
         with:
           role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/github-actions-deploy
           aws-region: ${{ inputs.aws_region }}
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v3
         with:
           terraform_version: "1.6.0"
 
@@ -68,7 +68,7 @@ jobs:
           git push origin ${{ inputs.version }}
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@fe965f7af51af5f2602596916f38a38df2e33de0  # v1
         with:
           tag_name: ${{ inputs.version }}
           name: Release ${{ inputs.version }}
