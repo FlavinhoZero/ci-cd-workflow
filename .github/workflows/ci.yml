@@ -68,7 +68,7 @@ jobs:
 
       - name: Security scan - Trivy
         if: always()
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2  # v0.28.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -80,7 +80,7 @@ jobs:
 
       - name: Upload Trivy results
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@6d786de4d6f3531a740e445b53a42b622bbbace8  # v3
         with:
           sarif_file: 'trivy-results.sarif'
           category: 'trivy'
