@@ -1,4 +1,4 @@
-﻿name: Deploy to Production
+name: Deploy to Production
 
 on:
   workflow_call:
@@ -49,7 +49,7 @@ jobs:
       - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c  # v4
         with:
-          role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/github-actions-deploy
+          role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/${{ secrets.AWS_DEPLOY_ROLE_NAME }}
           aws-region: ${{ inputs.aws_region }}
 
       - name: Setup Terraform
@@ -61,11 +61,11 @@ jobs:
         working-directory: terraform
         run: |
           terraform init \
-            -backend-config="bucket=terraform-state-${{ inputs.aws_account_id }}" \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
             -backend-config="key=${{ github.repository_owner }}/${{ github.event.repository.name }}/terraform.tfstate" \
             -backend-config="region=${{ inputs.aws_region }}" \
             -backend-config="encrypt=true" \
-            -backend-config="dynamodb_table=terraform-lock"
+            -backend-config="dynamodb_table=${{ secrets.TF_LOCK_TABLE }}"
 
       - name: Terraform Plan
         working-directory: terraform

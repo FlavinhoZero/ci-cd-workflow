@@ -1,4 +1,4 @@
-﻿name: Security Check
+name: Security Check
 
 on:
   workflow_call:
@@ -28,7 +28,7 @@ jobs:
       - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c  # v4
         with:
-          role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/github-actions-deploy
+          role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/${{ secrets.AWS_DEPLOY_ROLE_NAME }}
           aws-region: ${{ inputs.aws_region }}
 
       - name: Check for AWS Access Keys in Secrets
@@ -50,7 +50,8 @@ jobs:
       - name: Check IAM Role Permissions
         run: |
           echo "Checking IAM role permissions..."
-          aws iam get-role --role-name github-actions-deploy > /dev/null
+          ROLE_NAME=$(echo '${{ secrets.AWS_DEPLOY_ROLE_NAME }}' | sed 's|.*/||')
+          aws iam get-role --role-name "$ROLE_NAME" > /dev/null
           echo "IAM role exists - PASS"
 
       - name: Verify OIDC Provider
@@ -66,7 +67,7 @@ jobs:
       - name: Check S3 Bucket Encryption
         run: |
           echo "Checking S3 bucket encryption..."
-          aws s3api get-bucket-encryption --bucket terraform-state-${{ inputs.aws_account_id }} > /dev/null 2>&1 && {
+          aws s3api get-bucket-encryption --bucket ${{ secrets.TF_STATE_BUCKET }} > /dev/null 2>&1 && {
             echo "S3 bucket encryption enabled - PASS"
           } || {
             echo "WARNING: S3 bucket encryption not enabled or bucket does not exist"
@@ -75,7 +76,8 @@ jobs:
       - name: Check DynamoDB Table Encryption
         run: |
           echo "Checking DynamoDB table encryption..."
-          aws dynamodb describe-table --table-name terraform-lock --query 'Table.SSEDescription.Status' --output text | grep -q "ENABLED" && {
+          LOCK_TABLE=$(echo '${{ secrets.TF_LOCK_TABLE }}')
+          aws dynamodb describe-table --table-name "$LOCK_TABLE" --query 'Table.SSEDescription.Status' --output text | grep -q "ENABLED" && {
             echo "DynamoDB table encryption enabled - PASS"
           } || {
             echo "WARNING: DynamoDB table encryption not enabled or table does not exist"
