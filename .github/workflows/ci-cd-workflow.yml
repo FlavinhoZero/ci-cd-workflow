@@ -42,7 +42,7 @@ jobs:
       - name: Security scan - pip-audit
         if: always() && hashFiles('requirements*.txt') != ''
         run: |
-          pip install --only-binary :all: pip-audit
+          pip install --only-binary :all: 'pip-audit==2.10.1'
           pip-audit -r requirements.txt -r requirements-test.txt --desc --format=json --output=pip-audit-report.json || true
           cat pip-audit-report.json | jq '.vulnerabilities[] | "\(.package) \(.version) \(.id) \(.description)"' -r || true
 
@@ -52,7 +52,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo install -m 0755 -d /etc/apt/keyrings
-          curl -fsSL https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/trivy.gpg
+          curl --proto '=https' --tlsv1.2 -fsSL https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/trivy.gpg
           echo "deb [signed-by=/etc/apt/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list > /dev/null
           sudo apt-get update -o Dir::Etc::sourcelist="sources.list.d/trivy.list" -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0"
           sudo apt-get install -y trivy
