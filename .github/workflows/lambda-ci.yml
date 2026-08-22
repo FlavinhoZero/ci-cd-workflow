@@ -17,6 +17,16 @@ on:
         type: boolean
         required: false
         default: false
+    secrets:
+      AWS_DEPLOY_ROLE_NAME:
+        description: 'IAM role name assumed via OIDC (kept secret: public repo must not expose infra naming)'
+        required: true
+      TF_STATE_BUCKET:
+        description: 'Terraform state S3 bucket name (kept secret: public repo must not expose infra naming)'
+        required: true
+      TF_LOCK_TABLE:
+        description: 'Terraform state lock DynamoDB table name (kept secret: public repo must not expose infra naming)'
+        required: true
       # Note: NO resource-name/variable inputs — per-governance rule 2026-08-18
       # all resource names / TF_VAR_* live in the consuming repo's terraform/
       # (variables.tf defaults / locals.tf / tfvars). This workflow only gets
