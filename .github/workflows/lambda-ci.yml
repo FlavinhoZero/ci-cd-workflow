@@ -58,18 +58,11 @@ jobs:
           pip-audit -r requirements.txt -r requirements-test.txt --desc --format=json --output=pip-audit-report.json || true
           cat pip-audit-report.json | jq '.vulnerabilities[] | "\(.package) \(.version) \(.id) \(.description)"' -r || true
 
-      - name: Security scan - Trivy (informational, log output)
-        if: always()
-        uses: aquasecurity/trivy-action@f9424c10c36e288d5fa79bd3dfd1aeb2d6eae808  # v0.33.0
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'table'
-          severity: 'CRITICAL,HIGH'
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          exit-code: '0'
-          cache: 'false'
+      # NOTE: Trivy removed (2026-08-22) — its binary download from GitHub
+      # Releases proved unreliable from Actions runners (repeated exit 1 in
+      # setup-trivy install script). pip-audit covers Python dependency
+      # vulnerabilities; filesystem/OS scanning can be revisited later with
+      # a self-hosted runner or pinned mirror if needed.
 
   package:
     name: Package Lambda
