@@ -1,0 +1,329 @@
+name: Infra CI/CD Pipeline
+
+on:
+  workflow_call:
+    inputs:
+      aws_region:
+        description: 'AWS Region'
+        type: string
+        required: true
+        default: 'sa-east-1'
+      confirm_production_deploy:
+        description: 'Explicit confirmation to deploy to production (true/false). Deploy to production ONLY runs via workflow_dispatch with this set to true.'
+        type: boolean
+        required: false
+        default: false
+      destroy:
+        description: 'When true, run terraform destroy instead of apply (removes all resources). Used by infra that must be torn down (e.g. ec2Proxy). Default false.'
+        type: boolean
+        required: false
+        default: false
+    secrets:
+      AWS_ACCOUNT_ID:
+        description: 'AWS Account ID (secret, not input: masked in public logs)'
+        required: true
+      AWS_DEPLOY_ROLE_NAME:
+        description: 'IAM role name assumed via OIDC (kept secret: public repo must not expose infra naming)'
+        required: true
+      TF_STATE_BUCKET:
+        description: 'Terraform state S3 bucket name (kept secret: public repo must not expose infra naming)'
+        required: true
+      TF_LOCK_TABLE:
+        description: 'Terraform state lock DynamoDB table name (kept secret: public repo must not expose infra naming)'
+        required: true
+      # Note: NO resource-name/variable inputs — per-governance rule 2026-08-18
+      # all resource names / TF_VAR_* live in the consuming repo's terraform/
+      # (variables.tf defaults / locals.tf / tfvars). This workflow only gets
+      # orchestration inputs (account id, region).
+      #
+      # This workflow is for NON-Lambda infrastructure (DynamoDB tables, SQS
+      # queues, SNS topics, EventBridge rules, EC2, API Gateway). It has NO
+      # "Package Lambda" job — the consuming repo's terraform/ manages its own
+      # resources directly. The optional "test" job runs pytest when a
+      # requirements-test.txt is present (some infra repos ship Python helpers).
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ inputs.aws_region }}
+      AWS_DEFAULT_REGION: ${{ inputs.aws_region }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --only-binary :all: 'pip==25.2'
+          if [ -f requirements.txt ]; then pip install --only-binary :all: -r requirements.txt; fi
+          if [ -f requirements-test.txt ]; then pip install --only-binary :all: -r requirements-test.txt; fi
+      - name: Run tests
+        run: |
+          if [ -f requirements-test.txt ]; then
+            python -m pytest tests/ --cov=src -v
+          else
+            echo "No tests to run"
+          fi
+
+      - name: Security scan - pip-audit
+        if: always() && hashFiles('requirements*.txt') != ''
+        run: |
+          pip install --only-binary :all: 'pip-audit==2.10.1'
+          pip-audit -r requirements.txt -r requirements-test.txt --desc --format=json --output=pip-audit-report.json || true
+          cat pip-audit-report.json | jq '.vulnerabilities[] | "\(.package) \(.version) \(.id) \(.description)"' -r || true
+
+      - name: Install Trivy (APT repo)
+        if: always()
+        run: |
+          set -euo pipefail
+          sudo install -m 0755 -d /etc/apt/keyrings
+          curl --proto '=https' --tlsv1.2 -fsSL https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/trivy.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list > /dev/null
+          sudo apt-get update -o Dir::Etc::sourcelist="sources.list.d/trivy.list" -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0"
+          sudo apt-get install -y trivy
+          trivy --version
+
+      - name: Security scan - Trivy (informational, log output)
+        if: always()
+        run: |
+          trivy fs --scanners vuln --vuln-type os,library \
+            --severity CRITICAL,HIGH --ignore-unfixed \
+            --format table --exit-code 0 .
+
+  plan:
+    name: Terraform Plan
+    needs: test
+    runs-on: ubuntu-latest
+    environment: test
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      has_changes: ${{ steps.detect-changes.outputs.has_changes }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c  # v4
+        with:
+          role-to-assume: ${{ env.TF_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region }}
+        env:
+          TF_ROLE_ARN: "arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ secrets.AWS_DEPLOY_ROLE_NAME }}"
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v3
+        with:
+          terraform_version: "1.6.0"
+      - name: Configure provider filesystem mirror
+        run: |
+          set -euo pipefail
+          MIRROR_DIR="$HOME/.terraform.d/mirror"
+          mkdir -p "$MIRROR_DIR/registry.terraform.io/hashicorp/aws"
+          curl --proto '=https' --tlsv1.2 -fsSL -o "$MIRROR_DIR/registry.terraform.io/hashicorp/aws/terraform-provider-aws_5.100.0_linux_amd64.zip" \
+            "https://releases.hashicorp.com/terraform-provider-aws/5.100.0/terraform-provider-aws_5.100.0_linux_amd64.zip"
+          cat > "$HOME/.terraformrc" <<'EOF'
+          provider_installation {
+            filesystem_mirror {
+              path    = "/home/runner/.terraform.d/mirror"
+              include = ["registry.terraform.io/hashicorp/aws"]
+            }
+            direct {
+              exclude = ["registry.terraform.io/hashicorp/aws"]
+            }
+          }
+          EOF
+          echo "TF_CLI_CONFIG_FILE=$HOME/.terraformrc" >> "$GITHUB_ENV"
+      - name: Terraform Init
+        working-directory: terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=${{ github.repository }}/terraform.tfstate" \
+            -backend-config="region=${{ inputs.aws_region }}" \
+            -backend-config="encrypt=true" \
+            -backend-config="dynamodb_table=$TF_LOCK_TABLE"
+        env:
+          TF_STATE_BUCKET: "${{ secrets.TF_STATE_BUCKET }}"
+          TF_LOCK_TABLE: "${{ secrets.TF_LOCK_TABLE }}"
+      - name: Terraform Validate
+        working-directory: terraform
+        run: terraform validate
+      - name: Terraform Plan
+        working-directory: terraform
+        run: |
+          if [ "${{ inputs.destroy }}" == "true" ]; then
+            terraform plan -destroy -out=tfplan -input=false -no-color | tee plan-output.txt
+          else
+            terraform plan -out=tfplan -input=false -no-color | tee plan-output.txt
+          fi
+      - name: Detect plan changes
+        id: detect-changes
+        working-directory: terraform
+        run: |
+          # Detect any real work by parsing the plan summary line:
+          # "Plan: X to import, Y to add, Z to change, W to destroy."
+          # Any non-zero count (import/add/change/destroy) means deploy-test must run.
+          if grep -Eq 'Plan: [0-9]+ to (import|add|change|destroy)' plan-output.txt && \
+             ! grep -Eq 'Plan: 0 to import, 0 to add, 0 to change, 0 to destroy' plan-output.txt; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            echo "Plan has changes/imports → deploy-test will run"
+          else
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "Plan has no changes → deploy-test will be skipped"
+          fi
+      - name: Upload Terraform Plan
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v4
+        with:
+          name: tfplan
+          path: terraform/tfplan
+          if-no-files-found: error
+
+  deploy-test:
+    name: Deploy to Test
+    needs: plan
+    if: github.ref == 'refs/heads/develop' && needs.plan.outputs.has_changes == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.confirm_production_deploy == true)
+    runs-on: ubuntu-latest
+    environment: test
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c  # v4
+        with:
+          role-to-assume: ${{ env.TF_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region }}
+        env:
+          TF_ROLE_ARN: "arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ secrets.AWS_DEPLOY_ROLE_NAME }}"
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v3
+        with:
+          terraform_version: "1.6.0"
+      - name: Configure provider filesystem mirror
+        run: |
+          set -euo pipefail
+          MIRROR_DIR="$HOME/.terraform.d/mirror"
+          mkdir -p "$MIRROR_DIR/registry.terraform.io/hashicorp/aws"
+          curl --proto '=https' --tlsv1.2 -fsSL -o "$MIRROR_DIR/registry.terraform.io/hashicorp/aws/terraform-provider-aws_5.100.0_linux_amd64.zip" \
+            "https://releases.hashicorp.com/terraform-provider-aws/5.100.0/terraform-provider-aws_5.100.0_linux_amd64.zip"
+          cat > "$HOME/.terraformrc" <<'EOF'
+          provider_installation {
+            filesystem_mirror {
+              path    = "/home/runner/.terraform.d/mirror"
+              include = ["registry.terraform.io/hashicorp/aws"]
+            }
+            direct {
+              exclude = ["registry.terraform.io/hashicorp/aws"]
+            }
+          }
+          EOF
+          echo "TF_CLI_CONFIG_FILE=$HOME/.terraformrc" >> "$GITHUB_ENV"
+      - name: Terraform Init
+        working-directory: terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=${{ github.repository }}/terraform.tfstate" \
+            -backend-config="region=${{ inputs.aws_region }}" \
+            -backend-config="encrypt=true" \
+            -backend-config="dynamodb_table=$TF_LOCK_TABLE"
+        env:
+          TF_STATE_BUCKET: "${{ secrets.TF_STATE_BUCKET }}"
+          TF_LOCK_TABLE: "${{ secrets.TF_LOCK_TABLE }}"
+      - name: Terraform Apply
+        working-directory: terraform
+        run: |
+          # Re-generate the plan here (not reuse the saved plan) because
+          # `import {}` blocks mutate state during plan, making a saved plan
+          # "stale" by the time apply runs in a separate job.
+          if [ "${{ inputs.destroy }}" == "true" ]; then
+            terraform plan -destroy -out=tfplan -input=false -no-color
+          else
+            terraform plan -out=tfplan -input=false -no-color
+          fi
+          terraform apply -auto-approve ./tfplan
+
+  deploy-production:
+    name: Deploy to Production
+    needs: plan
+    if: github.event_name == 'workflow_dispatch' && inputs.confirm_production_deploy == true
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4
+        with:
+          fetch-depth: 0
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c  # v4
+        with:
+          role-to-assume: ${{ env.TF_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region }}
+        env:
+          TF_ROLE_ARN: "arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ secrets.AWS_DEPLOY_ROLE_NAME }}"
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v3
+        with:
+          terraform_version: "1.6.0"
+      - name: Configure provider filesystem mirror
+        run: |
+          set -euo pipefail
+          MIRROR_DIR="$HOME/.terraform.d/mirror"
+          mkdir -p "$MIRROR_DIR/registry.terraform.io/hashicorp/aws"
+          curl --proto '=https' --tlsv1.2 -fsSL -o "$MIRROR_DIR/registry.terraform.io/hashicorp/aws/terraform-provider-aws_5.100.0_linux_amd64.zip" \
+            "https://releases.hashicorp.com/terraform-provider-aws/5.100.0/terraform-provider-aws_5.100.0_linux_amd64.zip"
+          cat > "$HOME/.terraformrc" <<'EOF'
+          provider_installation {
+            filesystem_mirror {
+              path    = "/home/runner/.terraform.d/mirror"
+              include = ["registry.terraform.io/hashicorp/aws"]
+            }
+            direct {
+              exclude = ["registry.terraform.io/hashicorp/aws"]
+            }
+          }
+          EOF
+          echo "TF_CLI_CONFIG_FILE=$HOME/.terraformrc" >> "$GITHUB_ENV"
+      - name: Terraform Init
+        working-directory: terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=${{ github.repository }}/terraform.tfstate" \
+            -backend-config="region=${{ inputs.aws_region }}" \
+            -backend-config="encrypt=true" \
+            -backend-config="dynamodb_table=$TF_LOCK_TABLE"
+        env:
+          TF_STATE_BUCKET: "${{ secrets.TF_STATE_BUCKET }}"
+          TF_LOCK_TABLE: "${{ secrets.TF_LOCK_TABLE }}"
+      - name: Terraform Apply
+        working-directory: terraform
+        run: |
+          # Re-generate the plan here (not reuse the saved plan) because
+          # `import {}` blocks mutate state during plan, making a saved plan
+          # "stale" by the time apply runs in a separate job.
+          if [ "${{ inputs.destroy }}" == "true" ]; then
+            terraform plan -destroy -out=tfplan -input=false -no-color
+          else
+            terraform plan -out=tfplan -input=false -no-color
+          fi
+          terraform apply -auto-approve ./tfplan
+      - name: Merge source branch into main
+        if: inputs.destroy != true
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout -f main
+          git merge --no-edit "origin/${{ github.ref_name }}"
+          git push origin main

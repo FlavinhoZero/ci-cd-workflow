@@ -1,0 +1,81 @@
+# sync-secrets.ps1 - Script de sincronização de secrets e variáveis de ambiente
+
+<#
+.SYNOPSIS
+    Script para sincronizar secrets e variáveis de ambiente em múltiplos repositórios.
+
+.DESCRIPTION
+    Este script automatiza a configuração de secrets e variáveis de ambiente nos repositórios.
+
+    IMPORTANTE: A lista de repositórios é lida de 'repos-config.local.json' (NÃO versionado).
+
+.PARAMETER AWSAccountId
+    ID da conta AWS a ser configurada nos secrets.
+
+.PARAMETER Region
+    Região AWS padrão (padrão: sa-east-1).
+
+.PARAMETER Action
+    Ação a ser executada: "setup", "verify", "clean".
+
+.EXAMPLE
+    .\sync-secrets.ps1 -AWSAccountId "<AWS_ACCOUNT_ID>" -Action "setup"
+#>
+
+param(
+    [string]$AWSAccountId,
+    [string]$Region = "sa-east-1",
+    [ValidateSet("setup", "verify", "clean")]
+    [string]$Action = "setup"
+)
+
+$ErrorActionPreference = "Stop"
+$script:LogPath = "sync-secrets.log"
+
+function Write-Log {
+    param([string]$Message, [string]$Level = "INFO")
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $logEntry = "[$timestamp] [$Level] $Message"
+    Write-Host $logEntry
+    Add-Content -Path $script:LogPath -Value $logEntry
+}
+
+# Ler configuração local (owner + repos) — arquivo NÃO versionado
+$configPath = Join-Path $PSScriptRoot "repos-config.local.json"
+if (-not (Test-Path $configPath)) {
+    Write-Error "Arquivo de configuração não encontrado: $configPath. Copie repos-config.local.example.json para repos-config.local.json e preencha."
+    exit 1
+}
+$config = Get-Content $configPath -Raw | ConvertFrom-Json
+$Owner = $config.owner
+$Repos = @($config.repos)
+
+Write-Log "========================================="
+Write-Log "Iniciando sync-secrets.ps1"
+Write-Log "Ação: $Action"
+Write-Log "AWS Account ID: $AWSAccountId"
+Write-Log "Região: $Region"
+Write-Log "========================================="
+
+switch ($Action) {
+    "setup" {
+        foreach ($repo in $Repos) {
+            Write-Log "Configurando $repo..."
+            gh secret set AWS_ACCOUNT_ID --repo "$Owner/$repo" --body "$AWSAccountId"
+            gh variable set TF_VAR_region --env test --repo "$Owner/$repo" --body $Region
+            gh variable set TF_VAR_region --env production --repo "$Owner/$repo" --body $Region
+        }
+    }
+    "clean" {
+        foreach ($repo in $Repos) {
+            Write-Log "Limpando $repo..."
+            gh secret remove AWS_ACCESS_KEY_ID --repo "$Owner/$repo" -y
+            gh secret remove AWS_SECRET_ACCESS_KEY --repo "$Owner/$repo" -y
+        }
+    }
+}
+
+Write-Log "========================================="
+Write-Log "sync-secrets.ps1 concluído!"
+Write-Log "========================================="
+

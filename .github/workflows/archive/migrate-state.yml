@@ -1,0 +1,74 @@
+name: Migrate Local State to S3
+
+on:
+  workflow_call:
+    inputs:
+      aws_account_id:
+        description: 'AWS Account ID'
+        required: true
+        type: string
+      aws_region:
+        description: 'AWS Region'
+        required: true
+        type: string
+        default: 'sa-east-1'
+      backup_location:
+        description: 'S3 location for state backup (optional)'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  migrate:
+    name: Migrate Local State to S3
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c  # v4
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/${{ secrets.AWS_DEPLOY_ROLE_NAME }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v3
+        with:
+          terraform_version: "1.6.0"
+
+      - name: Backup Local State
+        run: |
+          if [ -f terraform.tfstate ]; then
+            terraform state pull > backup-state.json
+            echo "Local state backed up to backup-state.json"
+          else
+            echo "No local state file found"
+          fi
+
+      - name: Initialize Terraform with S3 Backend
+        working-directory: terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ github.repository_owner }}/${{ github.event.repository.name }}/terraform.tfstate" \
+            -backend-config="region=${{ inputs.aws_region }}" \
+            -backend-config="encrypt=true" \
+            -backend-config="dynamodb_table=${{ secrets.TF_LOCK_TABLE }}"
+
+      - name: Verify Migration
+        working-directory: terraform
+        run: |
+          echo "Verifying migration..."
+          terraform state list
+          echo "Migration completed successfully"
+
+      - name: Upload Backup to S3 (optional)
+        if: inputs.backup_location != ''
+        run: |
+          aws s3 cp backup-state.json ${{ inputs.backup_location }}/${{ github.event.repository.name }}-backup-$(date +%Y%m%d-%H%M%S).json
+          echo "Backup uploaded to ${{ inputs.backup_location }}"
