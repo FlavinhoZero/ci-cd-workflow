@@ -164,7 +164,7 @@ jobs:
       id-token: write
       contents: read
     outputs:
-      has_changes: ${{ steps.detect-changes.outputs.has_changes }}
+      has_changes: ${{ steps.plan.outputs.has_changes }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4
@@ -219,22 +219,24 @@ jobs:
         working-directory: terraform
         run: terraform validate
       - name: Terraform Plan
-        working-directory: terraform
-        run: terraform plan -out=tfplan -input=false -no-color | tee plan-output.txt
-      - name: Detect plan changes
-        id: detect-changes
+        id: plan
         working-directory: terraform
         run: |
-          # Detect any real work by parsing the plan summary line:
-          # "Plan: X to import, Y to add, Z to change, W to destroy."
-          # Any non-zero count (import/add/change/destroy) means deploy-test must run.
-          if grep -Eq 'Plan: [0-9]+ to (import|add|change|destroy)' plan-output.txt && \
-             ! grep -Eq 'Plan: 0 to import, 0 to add, 0 to change, 0 to destroy' plan-output.txt; then
+          # -detailed-exitcode: 0 = no changes, 1 = error, 2 = changes present.
+          # This is the canonical way to detect drift (no fragile string parsing).
+          set +e
+          terraform plan -out=tfplan -input=false -no-color -detailed-exitcode
+          exit_code=$?
+          set -e
+          if [ "$exit_code" -eq 0 ]; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "Plan has no changes → deploy-test will be skipped"
+          elif [ "$exit_code" -eq 2 ]; then
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
             echo "Plan has changes/imports → deploy-test will run"
           else
-            echo "has_changes=false" >> "$GITHUB_OUTPUT"
-            echo "Plan has no changes → deploy-test will be skipped"
+            echo "terraform plan failed with exit code $exit_code"
+            exit "$exit_code"
           fi
       - name: Upload Terraform Plan
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v4
