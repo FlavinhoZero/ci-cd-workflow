@@ -153,6 +153,9 @@ jobs:
         with:
           name: lambda-package
           path: lambda_package.zip
+          # Intermediary artifact (package -> plan -> deploy). Only needs to
+          # survive the current run; 1 day avoids accumulating GBs on Free Tier.
+          retention-days: 1
           if-no-files-found: error
 
   plan:
@@ -243,6 +246,9 @@ jobs:
         with:
           name: tfplan
           path: terraform/tfplan
+          # Intermediary artifact (plan -> deploy). 1 day retention keeps Free
+          # Tier storage low.
+          retention-days: 1
           if-no-files-found: error
 
   deploy-test:

@@ -181,6 +181,9 @@ jobs:
         with:
           name: tfplan
           path: terraform/tfplan
+          # Intermediary artifact (plan -> deploy). 1 day retention keeps Free
+          # Tier storage low.
+          retention-days: 1
           if-no-files-found: error
 
   deploy-test:
