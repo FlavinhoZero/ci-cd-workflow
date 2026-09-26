@@ -1,4 +1,4 @@
-name: Lambda CI/CD Pipeline
+﻿name: Lambda CI/CD Pipeline
 
 on:
   workflow_call:
@@ -26,7 +26,7 @@ on:
       TF_LOCK_TABLE:
         description: 'Terraform state lock DynamoDB table name (kept secret: public repo must not expose infra naming)'
         required: true
-      # Note: NO resource-name/variable inputs — per-governance rule 2026-08-18
+      # Note: NO resource-name/variable inputs â€” per-governance rule 2026-08-18
       # all resource names / TF_VAR_* live in the consuming repo's terraform/
       # (variables.tf defaults / locals.tf / tfvars). This workflow only gets
       # orchestration inputs (account id, region) and the build is done HERE
@@ -41,9 +41,9 @@ jobs:
       AWS_DEFAULT_REGION: ${{ inputs.aws_region }}
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4  # v4
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v5
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v5  # v5
         with:
           python-version: '3.11'
       - name: Install dependencies
@@ -94,9 +94,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4  # v4
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v5
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v5  # v5
         with:
           python-version: '3.11'
       - name: Build Lambda package
@@ -121,7 +121,7 @@ jobs:
           cd ..
           ls -lh lambda_package.zip
       - name: Setup Terraform (pre-fetch provider)
-        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v3
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v3  # v3
         with:
           terraform_version: "1.6.0"
       - name: Pre-fetch Terraform providers (filesystem mirror)
@@ -149,7 +149,7 @@ jobs:
           EOF
           echo "TF_CLI_CONFIG_FILE=$HOME/.terraformrc" >> "$GITHUB_ENV"
       - name: Upload Lambda package
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v4  # v4
         with:
           name: lambda-package
           path: lambda_package.zip
@@ -170,21 +170,21 @@ jobs:
       has_changes: ${{ steps.plan.outputs.has_changes }}
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4  # v4
       - name: Download Lambda package
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v4  # v4
         with:
           name: lambda-package
           path: ${{ github.workspace }}
       - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c  # v4
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c  # v4  # v4
         with:
           role-to-assume: ${{ env.TF_ROLE_ARN }}
           aws-region: ${{ inputs.aws_region }}
         env:
           TF_ROLE_ARN: "arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ secrets.AWS_DEPLOY_ROLE_NAME }}"
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v3
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v3  # v3
         with:
           terraform_version: "1.6.0"
       - name: Configure provider filesystem mirror
@@ -233,16 +233,16 @@ jobs:
           set -e
           if [ "$exit_code" -eq 0 ]; then
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
-            echo "Plan has no changes → deploy-test will be skipped"
+            echo "Plan has no changes â†’ deploy-test will be skipped"
           elif [ "$exit_code" -eq 2 ]; then
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
-            echo "Plan has changes/imports → deploy-test will run"
+            echo "Plan has changes/imports â†’ deploy-test will run"
           else
             echo "terraform plan failed with exit code $exit_code"
             exit "$exit_code"
           fi
       - name: Upload Terraform Plan
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v4  # v4
         with:
           name: tfplan
           path: terraform/tfplan
@@ -265,26 +265,26 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4  # v4
       - name: Download Lambda package
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v4  # v4
         with:
           name: lambda-package
           path: ${{ github.workspace }}
       - name: Download Terraform Plan
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v4  # v4
         with:
           name: tfplan
           path: terraform/tfplan-download
       - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c  # v4
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c  # v4  # v4
         with:
           role-to-assume: ${{ env.TF_ROLE_ARN }}
           aws-region: ${{ inputs.aws_region }}
         env:
           TF_ROLE_ARN: "arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ secrets.AWS_DEPLOY_ROLE_NAME }}"
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v3
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v3  # v3
         with:
           terraform_version: "1.6.0"
       - name: Configure provider filesystem mirror
@@ -337,33 +337,33 @@ jobs:
       id-token: write
       contents: write
     steps:
-      # fetch-depth: 0 — the auto-merge step below needs full history so git
+      # fetch-depth: 0 â€” the auto-merge step below needs full history so git
       # can compute a merge-base between main and the source branch. A shallow
       # (depth=1) checkout makes the two branches appear "unrelated" and
       # `git merge` fails with "refusing to merge unrelated histories".
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4  # v4
         with:
           fetch-depth: 0
       - name: Download Lambda package
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v4  # v4
         with:
           name: lambda-package
           path: ${{ github.workspace }}
       - name: Download Terraform Plan
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v4  # v4
         with:
           name: tfplan
           path: terraform/tfplan-download
       - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c  # v4
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c  # v4  # v4
         with:
           role-to-assume: ${{ env.TF_ROLE_ARN }}
           aws-region: ${{ inputs.aws_region }}
         env:
           TF_ROLE_ARN: "arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ secrets.AWS_DEPLOY_ROLE_NAME }}"
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v3
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v3  # v3
         with:
           terraform_version: "1.6.0"
       - name: Configure provider filesystem mirror
@@ -403,6 +403,21 @@ jobs:
           ls -la tfplan-download/
           cp tfplan-download/tfplan ./tfplan
           terraform apply -auto-approve ./tfplan
+      # Record workflow version for auditability (supports @main and @vX.Y.Z references)
+      - name: Record workflow version
+        if: success()
+        run: |
+          # Extract version from the reusable workflow reference
+          # If called via @main, use the commit SHA; if via @vX.Y.Z, use the tag
+          WORKFLOW_REF="${{ github.workflow_ref }}"
+          if [[ "$WORKFLOW_REF" == *@v* ]]; then
+            VERSION=$(echo "$WORKFLOW_REF" | sed 's/.*@v\([0-9.]*\).*/v\1/')
+          else
+            VERSION="main-$(git rev-parse --short HEAD)"
+          fi
+          echo "workflow_version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Workflow version: $VERSION"
+        id: version
       # After a successful production deploy, sync the source branch into main
       # so main always reflects what is actually running in production.
       # NOTE: terraform init may modify terraform/.terraform.lock.hcl (adds
