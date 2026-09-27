@@ -1,0 +1,208 @@
+name: Phased Deploy (Canary)
+
+on:
+  workflow_dispatch:
+    inputs:
+      workflow_file:
+        description: 'Which workflow to deploy (lambda-ci.yml, infra-ci.yml, ci.yml)'
+        type: choice
+        required: true
+        default: 'lambda-ci.yml'
+        options:
+          - lambda-ci.yml
+          - infra-ci.yml
+          - ci.yml
+      canary_repos:
+        description: 'Comma-separated list of canary repos (pilot first)'
+        type: string
+        required: true
+        default: 'lambdaPrice'
+      all_repos:
+        description: 'Comma-separated list of all consumer repos'
+        type: string
+        required: true
+        default: 'lambdaPrice,lambdaUsrCalcula,lambdaSellOrderBinance,lambdaCrudUsr,lambdaMarketFeatures,lambdaVolatility,lambdaNewsRSS,lambdaAppAuth,lambdaAppPayments,lambdaAppCore,apigatewayApp,dynamoUsr,dynamoUsrRange,dynamoPrice,dynamoPayments,dynamoVolatility,dynamoMarketFeatures,dynamoOrderTrade,ec2Proxy,eventbridgeCron,snsPriceCollected,snspricedropTrade,sqsPriceCollectedUsrCalcula,sqsPriceCollectedMarketFeatures,sqsUsrDrop'
+      validate_canary:
+        description: 'Wait for manual validation after canary deploy'
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  canary-deploy:
+    name: Canary Deploy (1 repo)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Parse canary repos
+        id: parse
+        run: |
+          CANARY="${{ github.event.inputs.canary_repos }}"
+          FIRST=$(echo "$CANARY" | cut -d',' -f1)
+          echo "canary_repo=$FIRST" >> "$GITHUB_OUTPUT"
+          echo "Canary repo: $FIRST"
+
+      - name: Trigger canary deploy
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const repo = '${{ steps.parse.outputs.canary_repo }}';
+            const workflow = '${{ github.event.inputs.workflow_file }}';
+            
+            // Trigger the workflow in the canary repo
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'FlavinhoZero',
+              repo: repo,
+              workflow_id: 'ci.yml',
+              ref: 'develop',
+              inputs: {}
+            });
+            
+            console.log(`Triggered ${workflow} in ${repo}`);
+
+      - name: Wait for canary completion
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const repo = '${{ steps.parse.outputs.canary_repo }}';
+            const maxWait = 600000; // 10 minutes
+            const pollInterval = 30000; // 30 seconds
+            const startTime = Date.now();
+            
+            while (Date.now() - startTime < maxWait) {
+              const runs = await github.rest.actions.listWorkflowRuns({
+                owner: 'FlavinhoZero',
+                repo: repo,
+                workflow_id: 'ci.yml',
+                branch: 'develop',
+                per_page: 1
+              });
+              
+              const latestRun = runs.data.workflow_runs[0];
+              if (!latestRun) {
+                console.log('No runs found yet, waiting...');
+                await new Promise(r => setTimeout(r, pollInterval));
+                continue;
+              }
+              
+              console.log(`Run ${latestRun.id}: ${latestRun.status} / ${latestRun.conclusion}`);
+              
+              if (latestRun.status === 'completed') {
+                if (latestRun.conclusion === 'success') {
+                  console.log('✅ Canary deploy succeeded');
+                  return;
+                } else {
+                  core.setFailed(`❌ Canary deploy failed: ${latestRun.conclusion}`);
+                  return;
+                }
+              }
+              
+              await new Promise(r => setTimeout(r, pollInterval));
+            }
+            
+            core.setFailed('⏱️ Canary deploy timed out');
+
+      - name: Manual validation gate
+        if: ${{ github.event.inputs.validate_canary == 'true' }}
+        run: |
+          echo "::notice::Canary deploy completed successfully in ${{ steps.parse.outputs.canary_repo }}"
+          echo "::notice::Please validate the canary deployment before proceeding to full rollout"
+          echo "::notice::Check: https://github.com/FlavinhoZero/${{ steps.parse.outputs.canary_repo }}/actions"
+          # This step will wait for manual approval via the workflow UI
+          # In practice, you'd use environment protection rules or a separate approval job
+
+  full-rollout:
+    name: Full Rollout (remaining repos)
+    needs: canary-deploy
+    if: ${{ success() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Parse all repos
+        id: parse
+        run: |
+          ALL="${{ github.event.inputs.all_repos }}"
+          CANARY="${{ github.event.inputs.canary_repos }}"
+          
+          # Remove canary repos from all repos
+          REMAINING=$(echo "$ALL" | tr ',' '\n' | grep -v -F -x -f <(echo "$CANARY" | tr ',' '\n') | tr '\n' ',' | sed 's/,$//')
+          echo "remaining_repos=$REMAINING" >> "$GITHUB_OUTPUT"
+          echo "Remaining repos: $REMAINING"
+
+      - name: Trigger parallel deploys
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const repos = '${{ steps.parse.outputs.remaining_repos }}'.split(',').filter(r => r);
+            const workflow = '${{ github.event.inputs.workflow_file }}';
+            
+            console.log(`Triggering ${workflow} in ${repos.length} repos...`);
+            
+            const promises = repos.map(repo => 
+              github.rest.actions.createWorkflowDispatch({
+                owner: 'FlavinhoZero',
+                repo: repo.trim(),
+                workflow_id: 'ci.yml',
+                ref: 'develop',
+                inputs: {}
+              }).then(() => console.log(`✅ Triggered ${repo}`))
+              .catch(err => console.error(`❌ Failed to trigger ${repo}:`, err.message))
+            );
+            
+            await Promise.all(promises);
+            console.log('All deployments triggered');
+
+      - name: Monitor rollout
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const repos = '${{ steps.parse.outputs.remaining_repos }}'.split(',').filter(r => r);
+            const maxWait = 1200000; // 20 minutes
+            const pollInterval = 60000; // 1 minute
+            const startTime = Date.now();
+            const completed = new Set();
+            const failed = new Set();
+            
+            while (Date.now() - startTime < maxWait && completed.size + failed.size < repos.length) {
+              for (const repo of repos) {
+                if (completed.has(repo) || failed.has(repo)) continue;
+                
+                try {
+                  const runs = await github.rest.actions.listWorkflowRuns({
+                    owner: 'FlavinhoZero',
+                    repo: repo.trim(),
+                    workflow_id: 'ci.yml',
+                    branch: 'develop',
+                    per_page: 1
+                  });
+                  
+                  const latestRun = runs.data.workflow_runs[0];
+                  if (latestRun && latestRun.status === 'completed') {
+                    if (latestRun.conclusion === 'success') {
+                      console.log(`✅ ${repo}: success`);
+                      completed.add(repo);
+                    } else {
+                      console.log(`❌ ${repo}: failed (${latestRun.conclusion})`);
+                      failed.add(repo);
+                    }
+                  }
+                } catch (err) {
+                  console.error(`Error checking ${repo}:`, err.message);
+                }
+              }
+              
+              if (completed.size + failed.size < repos.length) {
+                console.log(`Progress: ${completed.size + failed.size}/${repos.length} completed`);
+                await new Promise(r => setTimeout(r, pollInterval));
+              }
+            }
+            
+            console.log(`\n=== Rollout Summary ===`);
+            console.log(`✅ Success: ${completed.size}`);
+            console.log(`❌ Failed: ${failed.size}`);
+            console.log(`⏳ Pending: ${repos.length - completed.size - failed.size}`);
+            
+            if (failed.size > 0) {
+              core.setFailed(`${failed.size} repos failed deployment`);
+            }

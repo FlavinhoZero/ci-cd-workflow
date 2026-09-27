@@ -1,4 +1,4 @@
-﻿name: Lambda CI/CD Pipeline
+name: Lambda CI/CD Pipeline
 
 on:
   workflow_call:
@@ -26,7 +26,7 @@ on:
       TF_LOCK_TABLE:
         description: 'Terraform state lock DynamoDB table name (kept secret: public repo must not expose infra naming)'
         required: true
-      # Note: NO resource-name/variable inputs â€” per-governance rule 2026-08-18
+      # Note: NO resource-name/variable inputs --" per-governance rule 2026-08-18
       # all resource names / TF_VAR_* live in the consuming repo's terraform/
       # (variables.tf defaults / locals.tf / tfvars). This workflow only gets
       # orchestration inputs (account id, region) and the build is done HERE
@@ -233,10 +233,10 @@ jobs:
           set -e
           if [ "$exit_code" -eq 0 ]; then
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
-            echo "Plan has no changes â†’ deploy-test will be skipped"
+            echo "Plan has no changes ->' deploy-test will be skipped"
           elif [ "$exit_code" -eq 2 ]; then
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
-            echo "Plan has changes/imports â†’ deploy-test will run"
+            echo "Plan has changes/imports ->' deploy-test will run"
           else
             echo "terraform plan failed with exit code $exit_code"
             exit "$exit_code"
@@ -337,7 +337,7 @@ jobs:
       id-token: write
       contents: write
     steps:
-      # fetch-depth: 0 â€” the auto-merge step below needs full history so git
+      # fetch-depth: 0 --" the auto-merge step below needs full history so git
       # can compute a merge-base between main and the source branch. A shallow
       # (depth=1) checkout makes the two branches appear "unrelated" and
       # `git merge` fails with "refusing to merge unrelated histories".

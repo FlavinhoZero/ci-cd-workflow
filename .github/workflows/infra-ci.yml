@@ -1,4 +1,4 @@
-﻿name: Infra CI/CD Pipeline
+name: Infra CI/CD Pipeline
 
 on:
   workflow_call:
@@ -31,14 +31,14 @@ on:
       TF_LOCK_TABLE:
         description: 'Terraform state lock DynamoDB table name (kept secret: public repo must not expose infra naming)'
         required: true
-      # Note: NO resource-name/variable inputs â€” per-governance rule 2026-08-18
+      # Note: NO resource-name/variable inputs --" per-governance rule 2026-08-18
       # all resource names / TF_VAR_* live in the consuming repo's terraform/
       # (variables.tf defaults / locals.tf / tfvars). This workflow only gets
       # orchestration inputs (account id, region).
       #
       # This workflow is for NON-Lambda infrastructure (DynamoDB tables, SQS
       # queues, SNS topics, EventBridge rules, EC2, API Gateway). It has NO
-      # "Package Lambda" job â€” the consuming repo's terraform/ manages its own
+      # "Package Lambda" job --" the consuming repo's terraform/ manages its own
       # resources directly. The optional "test" job runs pytest when a
       # requirements-test.txt is present (some infra repos ship Python helpers).
 
@@ -168,10 +168,10 @@ jobs:
           set -e
           if [ "$exit_code" -eq 0 ]; then
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
-            echo "Plan has no changes â†’ deploy-test will be skipped"
+            echo "Plan has no changes ->' deploy-test will be skipped"
           elif [ "$exit_code" -eq 2 ]; then
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
-            echo "Plan has changes/imports â†’ deploy-test will run"
+            echo "Plan has changes/imports ->' deploy-test will run"
           else
             echo "terraform plan failed with exit code $exit_code"
             exit "$exit_code"
