@@ -35,7 +35,7 @@ on:
 jobs:
   test:
     name: Test
-    runs-on: ubuntu-latest-arm64
+    runs-on: ubuntu-latest
     env:
       AWS_REGION: ${{ inputs.aws_region }}
       AWS_DEFAULT_REGION: ${{ inputs.aws_region }}
@@ -91,7 +91,7 @@ jobs:
   package:
     name: Package Lambda
     needs: test
-    runs-on: ubuntu-latest-arm64
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4  # v4
@@ -99,13 +99,17 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v5  # v5
         with:
           python-version: '3.12'
-      - name: Build Lambda package
+      - name: Build Lambda package (cross-compile for arm64)
         run: |
           set -euo pipefail
           mkdir -p lambda_package
-          # Install runtime deps into the package dir
+          # Install runtime deps into the package dir for arm64 (Graviton2)
           if [ -f requirements.txt ]; then
-            python -m pip install --only-binary :all: --quiet --target lambda_package -r requirements.txt
+            python -m pip install --only-binary :all: --quiet --target lambda_package \
+              --platform manylinux2014_aarch64 \
+              --python-version 3.12 \
+              --implementation cp \
+              -r requirements.txt
           fi
           # Copy application source
           if [ -d src ]; then
@@ -130,11 +134,11 @@ jobs:
           # Download the AWS provider zip directly from releases.hashicorp.com
           # (no GPG signature check) and expose it as a filesystem mirror so
           # terraform init never hits "error checking signature".
-          # Using arm64 provider for arm64 runner
+          # Using amd64 provider for x86_64 runner (Terraform runs on runner arch)
           MIRROR_DIR="$HOME/.terraform.d/mirror"
           mkdir -p "$MIRROR_DIR/registry.terraform.io/hashicorp/aws"
-          curl --proto '=https' --tlsv1.2 -fsSL -o "$MIRROR_DIR/registry.terraform.io/hashicorp/aws/terraform-provider-aws_5.100.0_linux_arm64.zip" \
-            "https://releases.hashicorp.com/terraform-provider-aws/5.100.0/terraform-provider-aws_5.100.0_linux_arm64.zip"
+          curl --proto '=https' --tlsv1.2 -fsSL -o "$MIRROR_DIR/registry.terraform.io/hashicorp/aws/terraform-provider-aws_5.100.0_linux_amd64.zip" \
+            "https://releases.hashicorp.com/terraform-provider-aws/5.100.0/terraform-provider-aws_5.100.0_linux_amd64.zip"
           ls -lh "$MIRROR_DIR/registry.terraform.io/hashicorp/aws/"
           # Write CLI config pointing at the mirror
           cat > "$HOME/.terraformrc" <<'EOF'
@@ -162,7 +166,7 @@ jobs:
   plan:
     name: Terraform Plan
     needs: [test, package]
-    runs-on: ubuntu-latest-arm64
+    runs-on: ubuntu-latest
     environment: test
     permissions:
       id-token: write
@@ -193,8 +197,8 @@ jobs:
           set -euo pipefail
           MIRROR_DIR="$HOME/.terraform.d/mirror"
           mkdir -p "$MIRROR_DIR/registry.terraform.io/hashicorp/aws"
-          curl --proto '=https' --tlsv1.2 -fsSL -o "$MIRROR_DIR/registry.terraform.io/hashicorp/aws/terraform-provider-aws_5.100.0_linux_arm64.zip" \
-            "https://releases.hashicorp.com/terraform-provider-aws/5.100.0/terraform-provider-aws_5.100.0_linux_arm64.zip"
+          curl --proto '=https' --tlsv1.2 -fsSL -o "$MIRROR_DIR/registry.terraform.io/hashicorp/aws/terraform-provider-aws_5.100.0_linux_amd64.zip" \
+            "https://releases.hashicorp.com/terraform-provider-aws/5.100.0/terraform-provider-aws_5.100.0_linux_amd64.zip"
           cat > "$HOME/.terraformrc" <<'EOF'
           provider_installation {
             filesystem_mirror {
@@ -259,7 +263,7 @@ jobs:
     # Skip when this run is a confirmed production deploy (manual dispatch) so
     # we don't re-apply to test at the same time as production.
     if: github.ref == 'refs/heads/develop' && needs.plan.outputs.has_changes == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.confirm_production_deploy == true)
-    runs-on: ubuntu-latest-arm64
+    runs-on: ubuntu-latest
     environment: test
     permissions:
       id-token: write
@@ -293,8 +297,8 @@ jobs:
           set -euo pipefail
           MIRROR_DIR="$HOME/.terraform.d/mirror"
           mkdir -p "$MIRROR_DIR/registry.terraform.io/hashicorp/aws"
-          curl --proto '=https' --tlsv1.2 -fsSL -o "$MIRROR_DIR/registry.terraform.io/hashicorp/aws/terraform-provider-aws_5.100.0_linux_arm64.zip" \
-            "https://releases.hashicorp.com/terraform-provider-aws/5.100.0/terraform-provider-aws_5.100.0_linux_arm64.zip"
+          curl --proto '=https' --tlsv1.2 -fsSL -o "$MIRROR_DIR/registry.terraform.io/hashicorp/aws/terraform-provider-aws_5.100.0_linux_amd64.zip" \
+            "https://releases.hashicorp.com/terraform-provider-aws/5.100.0/terraform-provider-aws_5.100.0_linux_amd64.zip"
           cat > "$HOME/.terraformrc" <<'EOF'
           provider_installation {
             filesystem_mirror {
@@ -332,7 +336,7 @@ jobs:
     # Security: deploy to production ONLY via manual workflow_dispatch with
     # explicit confirmation. Never automatic on push/merge to main.
     if: github.event_name == 'workflow_dispatch' && inputs.confirm_production_deploy == true
-    runs-on: ubuntu-latest-arm64
+    runs-on: ubuntu-latest
     environment: production
     permissions:
       id-token: write
@@ -372,8 +376,8 @@ jobs:
           set -euo pipefail
           MIRROR_DIR="$HOME/.terraform.d/mirror"
           mkdir -p "$MIRROR_DIR/registry.terraform.io/hashicorp/aws"
-          curl --proto '=https' --tlsv1.2 -fsSL -o "$MIRROR_DIR/registry.terraform.io/hashicorp/aws/terraform-provider-aws_5.100.0_linux_arm64.zip" \
-            "https://releases.hashicorp.com/terraform-provider-aws/5.100.0/terraform-provider-aws_5.100.0_linux_arm64.zip"
+          curl --proto '=https' --tlsv1.2 -fsSL -o "$MIRROR_DIR/registry.terraform.io/hashicorp/aws/terraform-provider-aws_5.100.0_linux_amd64.zip" \
+            "https://releases.hashicorp.com/terraform-provider-aws/5.100.0/terraform-provider-aws_5.100.0_linux_amd64.zip"
           cat > "$HOME/.terraformrc" <<'EOF'
           provider_installation {
             filesystem_mirror {
