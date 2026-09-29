@@ -231,20 +231,28 @@ jobs:
         working-directory: terraform
         run: |
           # -detailed-exitcode: 0 = no changes, 1 = error, 2 = changes present.
-          # This is the canonical way to detect drift (no fragile string parsing).
+          # BUT: exit code 0 can still mean "in-place updates" (e.g., source_code_hash).
+          # We must also parse the plan output for "will be updated" / "to change".
           set +e
-          terraform plan -out=tfplan -input=false -no-color -detailed-exitcode
+          terraform plan -out=tfplan -input=false -no-color -detailed-exitcode 2>&1 | tee plan_output.txt
           exit_code=$?
           set -e
-          if [ "$exit_code" -eq 0 ]; then
-            echo "has_changes=false" >> "$GITHUB_OUTPUT"
-            echo "Plan has no changes ->' deploy-test will be skipped"
+          
+          # Check for any changes in the plan output (adds, changes, destroys, updates)
+          if grep -qE "(Plan: [0-9]+ to (add|change|destroy)|will be updated|will be replaced)" plan_output.txt; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            echo "Plan has changes -> deploy-test will run"
           elif [ "$exit_code" -eq 2 ]; then
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
-            echo "Plan has changes/imports ->' deploy-test will run"
+            echo "Plan has changes/imports (exit code 2) -> deploy-test will run"
           else
-            echo "terraform plan failed with exit code $exit_code"
-            exit "$exit_code"
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "Plan has no changes -> deploy-test will be skipped"
+          fi
+          
+          if [ "$exit_code" -eq 1 ]; then
+            echo "terraform plan failed with exit code 1"
+            exit 1
           fi
       - name: Upload Terraform Plan
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v4  # v4
