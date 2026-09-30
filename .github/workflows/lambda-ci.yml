@@ -124,6 +124,29 @@ jobs:
           zip -qr ../lambda_package.zip .
           cd ..
           ls -lh lambda_package.zip
+      - name: Compute package SHA256
+        id: package_hash
+        run: |
+          echo "sha256=$(sha256sum lambda_package.zip | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Upload Lambda package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v4  # v4
+        with:
+          name: lambda-package
+          path: lambda_package.zip
+          retention-days: 1
+          if-no-files-found: error
+      - name: Upload package SHA256
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v4  # v4
+        with:
+          name: lambda-package-sha256
+          path: |
+            lambda_package.zip.sha256
+          retention-days: 1
+          if-no-files-found: error
+        env:
+          PACKAGE_SHA256: ${{ steps.package_hash.outputs.sha256 }}
+        run: |
+          echo "${{ steps.package_hash.outputs.sha256 }}" > lambda_package.zip.sha256
       - name: Setup Terraform (pre-fetch provider)
         uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v3  # v3
         with:
@@ -181,26 +204,49 @@ jobs:
         with:
           name: lambda-package
           path: ${{ github.workspace }}
-      - name: Verify Lambda package
+      - name: Download package SHA256
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v4  # v4
+        with:
+          name: lambda-package-sha256
+          path: ${{ github.workspace }}
+      - name: Verify Lambda package integrity
         run: |
           set -euo pipefail
           ZIP_PATH="${{ github.workspace }}/lambda_package.zip"
+          SHA_PATH="${{ github.workspace }}/lambda_package.zip.sha256"
+          
           if [ ! -f "$ZIP_PATH" ]; then
             echo "::error::Lambda package not found at $ZIP_PATH"
             ls -la "${{ github.workspace }}/"
             exit 1
           fi
-          echo "Package found: $ZIP_PATH"
-          ls -lh "$ZIP_PATH"
-          echo "SHA256: $(sha256sum "$ZIP_PATH" | cut -d' ' -f1)"
+          if [ ! -f "$SHA_PATH" ]; then
+            echo "::error::SHA256 file not found at $SHA_PATH"
+            ls -la "${{ github.workspace }}/"
+            exit 1
+          fi
+          
+          EXPECTED_SHA=$(cat "$SHA_PATH" | tr -d '[:space:]')
+          ACTUAL_SHA=$(sha256sum "$ZIP_PATH" | cut -d' ' -f1)
+          
+          echo "Expected SHA256: $EXPECTED_SHA"
+          echo "Actual SHA256:   $ACTUAL_SHA"
+          
+          if [ "$EXPECTED_SHA" != "$ACTUAL_SHA" ]; then
+            echo "::error::SHA256 mismatch! Artifact may be corrupted or stale."
+            echo "Expected: $EXPECTED_SHA"
+            echo "Actual:   $ACTUAL_SHA"
+            exit 1
+          fi
+          
+          echo "✓ Package integrity verified: SHA256 matches"
+          
           # Quick sanity check: verify it contains the expected handler
-          unzip -l "$ZIP_PATH" | grep -E "lambda_function\.py" | head -5 || true
-          # Verify package structure is valid (has handler file)
           if ! unzip -l "$ZIP_PATH" | grep -q "lambda_function\.py"; then
             echo "::error::Package missing lambda_function.py handler"
             exit 1
           fi
-          echo "✓ Package verified: valid structure with lambda_function.py"
+          echo "✓ Package structure verified: contains lambda_function.py"
       - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c  # v4  # v4
         with:
