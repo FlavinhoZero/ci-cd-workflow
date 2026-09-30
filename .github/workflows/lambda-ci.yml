@@ -181,6 +181,20 @@ jobs:
         with:
           name: lambda-package
           path: ${{ github.workspace }}
+      - name: Verify Lambda package
+        run: |
+          set -euo pipefail
+          ZIP_PATH="${{ github.workspace }}/lambda_package.zip"
+          if [ ! -f "$ZIP_PATH" ]; then
+            echo "::error::Lambda package not found at $ZIP_PATH"
+            ls -la "${{ github.workspace }}/"
+            exit 1
+          fi
+          echo "Package found: $ZIP_PATH"
+          ls -lh "$ZIP_PATH"
+          echo "SHA256: $(sha256sum "$ZIP_PATH" | cut -d' ' -f1)"
+          # Quick sanity check: verify it contains the expected handler
+          unzip -l "$ZIP_PATH" | grep -E "lambda_function\.py|aiohttp|binance" | head -5 || true
       - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c  # v4  # v4
         with:
