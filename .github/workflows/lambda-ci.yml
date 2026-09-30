@@ -185,6 +185,13 @@ jobs:
           if-no-files-found: error
 
   plan:
+          path: lambda_package.zip
+          # Intermediary artifact (package -> plan -> deploy). Only needs to
+          # survive the current run; 1 day avoids accumulating GBs on Free Tier.
+          retention-days: 1
+          if-no-files-found: error
+
+  plan:
     name: Terraform Plan
     needs: [test, package]
     runs-on: ubuntu-latest
