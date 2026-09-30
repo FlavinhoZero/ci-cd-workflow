@@ -174,15 +174,6 @@ jobs:
           }
           EOF
           echo "TF_CLI_CONFIG_FILE=$HOME/.terraformrc" >> "$GITHUB_ENV"
-      - name: Upload Lambda package
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v4  # v4
-        with:
-          name: lambda-package
-          path: lambda_package.zip
-          # Intermediary artifact (package -> plan -> deploy). Only needs to
-          # survive the current run; 1 day avoids accumulating GBs on Free Tier.
-          retention-days: 1
-          if-no-files-found: error
 
   plan:
     name: Terraform Plan
