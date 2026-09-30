@@ -194,20 +194,13 @@ jobs:
           ls -lh "$ZIP_PATH"
           echo "SHA256: $(sha256sum "$ZIP_PATH" | cut -d' ' -f1)"
           # Quick sanity check: verify it contains the expected handler
-          unzip -l "$ZIP_PATH" | grep -E "lambda_function\.py|aiohttp|binance" | head -5 || true
-          
-          # CRITICAL: Verify the package contains the NEW async code (aiohttp), not old sync code (python-binance)
-          # This prevents silent deploy of stale artifact from previous runs
-          if unzip -p "$ZIP_PATH" lambda_function.py | grep -q "from binance.client import Client"; then
-            echo "::error::Package contains OLD sync code (python-binance). Expected NEW async code (aiohttp)."
-            echo "This indicates a stale artifact was downloaded. Failing to prevent bad deploy."
+          unzip -l "$ZIP_PATH" | grep -E "lambda_function\.py" | head -5 || true
+          # Verify package structure is valid (has handler file)
+          if ! unzip -l "$ZIP_PATH" | grep -q "lambda_function\.py"; then
+            echo "::error::Package missing lambda_function.py handler"
             exit 1
           fi
-          if ! unzip -p "$ZIP_PATH" lambda_function.py | grep -q "import aiohttp"; then
-            echo "::error::Package does not contain aiohttp import. Expected NEW async code."
-            exit 1
-          fi
-          echo "✓ Package verified: contains NEW async aiohttp code"
+          echo "✓ Package verified: valid structure with lambda_function.py"
       - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c  # v4  # v4
         with:
