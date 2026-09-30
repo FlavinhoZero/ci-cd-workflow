@@ -128,25 +128,23 @@ jobs:
         id: package_hash
         run: |
           echo "sha256=$(sha256sum lambda_package.zip | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Write SHA256 to file
+        run: |
+          echo "${{ steps.package_hash.outputs.sha256 }}" > lambda_package.zip.sha256
       - name: Upload Lambda package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v4  # v4
         with:
-          name: lambda-package
+          name: lambda-package-${{ github.run_id }}
           path: lambda_package.zip
           retention-days: 1
           if-no-files-found: error
       - name: Upload package SHA256
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v4  # v4
         with:
-          name: lambda-package-sha256
-          path: |
-            lambda_package.zip.sha256
+          name: lambda-package-sha256-${{ github.run_id }}
+          path: lambda_package.zip.sha256
           retention-days: 1
           if-no-files-found: error
-        env:
-          PACKAGE_SHA256: ${{ steps.package_hash.outputs.sha256 }}
-        run: |
-          echo "${{ steps.package_hash.outputs.sha256 }}" > lambda_package.zip.sha256
       - name: Setup Terraform (pre-fetch provider)
         uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v3  # v3
         with:
@@ -176,15 +174,6 @@ jobs:
           }
           EOF
           echo "TF_CLI_CONFIG_FILE=$HOME/.terraformrc" >> "$GITHUB_ENV"
-      - name: Upload Lambda package
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v4  # v4
-        with:
-          name: lambda-package
-          path: lambda_package.zip
-          # Intermediary artifact (package -> plan -> deploy). Only needs to
-          # survive the current run; 1 day avoids accumulating GBs on Free Tier.
-          retention-days: 1
-          if-no-files-found: error
 
   plan:
     name: Terraform Plan
@@ -202,12 +191,12 @@ jobs:
       - name: Download Lambda package
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v4  # v4
         with:
-          name: lambda-package
+          name: lambda-package-${{ github.run_id }}
           path: ${{ github.workspace }}
       - name: Download package SHA256
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v4  # v4
         with:
-          name: lambda-package-sha256
+          name: lambda-package-sha256-${{ github.run_id }}
           path: ${{ github.workspace }}
       - name: Verify Lambda package integrity
         run: |
@@ -348,7 +337,7 @@ jobs:
       - name: Download Lambda package
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v4  # v4
         with:
-          name: lambda-package
+          name: lambda-package-${{ github.run_id }}
           path: ${{ github.workspace }}
       - name: Download Terraform Plan
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v4  # v4
@@ -427,7 +416,7 @@ jobs:
       - name: Download Lambda package
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v4  # v4
         with:
-          name: lambda-package
+          name: lambda-package-${{ github.run_id }}
           path: ${{ github.workspace }}
       - name: Download Terraform Plan
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v4  # v4
