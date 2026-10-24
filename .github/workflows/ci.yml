@@ -1,6 +1,13 @@
 name: CI/CD Pipeline
 
 on:
+  # Self-CI (plan 045 wave 1, tarefa 1.3b): run the governance guard and repo
+  # hygiene checks on pushes/PRs targeting main. Public repo -> free minutes.
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  # Reusable-workflow contract (unchanged; no current caller uses it).
   workflow_call:
     inputs:
       github_token:
@@ -40,6 +47,54 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4  # v4
+
+      # Governance guard (plan 045 wave 1, tarefa 1.3b / analysis 044 F2):
+      # an upload-artifact merged to this repo's main propagates INSTANTLY to
+      # the 26 consumer repos (@main). An upload without retention-days would
+      # re-enact the 2026-09-08 quota incident. Policy (code-review-checklist):
+      # every upload-artifact MUST declare retention-days (<= 7); debug
+      # artifacts only with 'if: failure()'.
+      - name: Guard - upload-artifact must declare retention-days
+        run: |
+          set -euo pipefail
+          violations=0
+          for wf in ci.yml lambda-ci.yml infra-ci.yml; do
+            file=".github/workflows/$wf"
+            if [ ! -f "$file" ]; then
+              echo "::warning file=$file::workflow not found - guard skipped"
+              continue
+            fi
+            if awk '
+                /^[ \t]*-[ \t]/ {
+                  if (up && !ret) {
+                    printf "::error file=%s,line=%d::upload-artifact step is missing retention-days\n", FILENAME, start
+                    bad = 1
+                  }
+                  up = 0; ret = 0; start = NR
+                  # inline "- uses: .../upload-artifact@..." on the list line itself
+                  if ($0 ~ /^[ \t]*-[ \t]*uses:[ \t]*[^ \t]*upload-artifact([@\t ]|$)/) up = 1
+                  next
+                }
+                /^[ \t]*uses:[ \t]*[^ \t]*upload-artifact([@\t ]|$)/ { up = 1 }
+                /^[ \t]*retention-days:/ { ret = 1 }
+                END {
+                  if (up && !ret) {
+                    printf "::error file=%s,line=%d::upload-artifact step is missing retention-days\n", FILENAME, start
+                    bad = 1
+                  }
+                  if (bad) exit 1
+                }
+              ' "$file"; then
+              echo "OK: $wf - every upload-artifact step declares retention-days"
+            else
+              violations=$((violations + 1))
+            fi
+          done
+          if [ "$violations" -ne 0 ]; then
+            echo "Guard FAILED: $violations workflow(s) contain upload-artifact without retention-days (policy: retention-days <= 7 - plan 045)"
+            exit 1
+          fi
+          echo "Guard passed: every upload-artifact in the active workflows declares retention-days."
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v5  # v5
@@ -88,6 +143,9 @@ jobs:
   deploy:
     name: Deploy
     needs: test
+    # Deploy exists only for the reusable-workflow contract (workflow_call).
+    # Self-CI triggers (push/pull_request) never touch AWS (R1-R3, aws-rules.md).
+    if: github.event_name == 'workflow_call'
     runs-on: ubuntu-latest
     environment: AWS_PROD
     permissions:
