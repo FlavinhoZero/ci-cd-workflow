@@ -289,6 +289,7 @@ jobs:
           # BUT: exit code 0 can still mean "in-place updates" (e.g., source_code_hash).
           # We must also parse the plan output for "will be updated" / "to change".
           set +e
+          set -o pipefail
           terraform plan -out=tfplan -input=false -no-color -detailed-exitcode 2>&1 | tee plan_output.txt
           exit_code=$?
           set -e
