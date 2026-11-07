@@ -266,6 +266,17 @@ jobs:
           }
           EOF
           echo "TF_CLI_CONFIG_FILE=$HOME/.terraformrc" >> "$GITHUB_ENV"
+      - name: Map GitHub env vars to TF_VAR
+        run: |
+          # Converte variáveis do GitHub Environment (vars.*) em TF_VAR_* para o terraform.
+          # Permite que cada environment (test=dev, production=prod) defina valores
+          # diferentes para as mesmas variáveis (ex: BINANCE_TESTNET=true/false).
+          env | grep -E '^(BINANCE_|ENABLE_|USE_BINANCE|PROXY_|MASTER_KEY|CONFIG_|COGNITO_|DYNAMODB_|SQS_|SNS_|LAMBDA_|AWS_REGION|SSM_|DROP_|KILL_|PRO_|EWMA_|VOLUME_|NEWS_|RSS_)' | \
+            while IFS='=' read -r name value; do
+              tf_name=$(echo "$name" | tr '[:upper:]' '[:lower:]')
+              echo "TF_VAR_${tf_name}=${value}" >> "$GITHUB_ENV"
+              echo "Mapped env var: ${name} -> TF_VAR_${tf_name}"
+            done
       - name: Terraform Init
         working-directory: terraform
         run: |
@@ -375,6 +386,14 @@ jobs:
           }
           EOF
           echo "TF_CLI_CONFIG_FILE=$HOME/.terraformrc" >> "$GITHUB_ENV"
+      - name: Map GitHub env vars to TF_VAR
+        run: |
+          env | grep -E '^(BINANCE_|ENABLE_|USE_BINANCE|PROXY_|MASTER_KEY|CONFIG_|COGNITO_|DYNAMODB_|SQS_|SNS_|LAMBDA_|AWS_REGION|SSM_|DROP_|KILL_|PRO_|EWMA_|VOLUME_|NEWS_|RSS_)' | \
+            while IFS='=' read -r name value; do
+              tf_name=$(echo "$name" | tr '[:upper:]' '[:lower:]')
+              echo "TF_VAR_${tf_name}=${value}" >> "$GITHUB_ENV"
+              echo "Mapped env var: ${name} -> TF_VAR_${tf_name}"
+            done
       - name: Terraform Init
         working-directory: terraform
         run: |
@@ -454,6 +473,14 @@ jobs:
           }
           EOF
           echo "TF_CLI_CONFIG_FILE=$HOME/.terraformrc" >> "$GITHUB_ENV"
+      - name: Map GitHub env vars to TF_VAR
+        run: |
+          env | grep -E '^(BINANCE_|ENABLE_|USE_BINANCE|PROXY_|MASTER_KEY|CONFIG_|COGNITO_|DYNAMODB_|SQS_|SNS_|LAMBDA_|AWS_REGION|SSM_|DROP_|KILL_|PRO_|EWMA_|VOLUME_|NEWS_|RSS_)' | \
+            while IFS='=' read -r name value; do
+              tf_name=$(echo "$name" | tr '[:upper:]' '[:lower:]')
+              echo "TF_VAR_${tf_name}=${value}" >> "$GITHUB_ENV"
+              echo "Mapped env var: ${name} -> TF_VAR_${tf_name}"
+            done
       - name: Terraform Init
         working-directory: terraform
         run: |
